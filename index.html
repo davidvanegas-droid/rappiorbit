@@ -1,0 +1,1828 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RappiOrbit</title>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            wa: {
+              green:     '#FF441F',
+              darkgreen: '#E03A17',
+              teal:      '#C23012',
+              light:     '#FFF0ED',
+              panel:     '#F4F4F4',
+              bubble:    '#FFFFFF',
+              sent:      '#FFF0ED',
+              header:    '#FFFFFF',
+              sidebar:   '#F4F4F4',
+              hover:     '#FFF4F2',
+              border:    '#EDEDED',
+              text:      '#888888',
+              icon:      '#666666',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Poppins', 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #DDDDDD; border-radius: 3px; }
+    .chat-bg { background-color: #F9F5F3; }
+    .msg-tail-sent::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      right: -8px;
+      width: 0;
+      height: 0;
+      border-left: 8px solid #FFF0ED;
+      border-bottom: 8px solid transparent;
+    }
+    .msg-tail-recv::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: -8px;
+      width: 0;
+      height: 0;
+      border-right: 8px solid #FFFFFF;
+      border-bottom: 8px solid transparent;
+    }
+    .fade-in { animation: fadeIn 0.15s ease-in; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .tab-active { border-bottom: 2px solid #FF441F; color: #FF441F; }
+    .tab-inactive { color: #999999; }
+    input[type="text"], textarea { outline: none; }
+    .status-dot-online  { background: #34C85A; }
+    .status-dot-away    { background: #FBDC25; }
+    .status-dot-offline { background: #AAAAAA; }
+    .rappi-gradient { background: linear-gradient(135deg, #FF441F 0%, #FF6B35 100%); }
+  </style>
+</head>
+<body class="bg-wa-sidebar text-gray-900 overflow-hidden">
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useRef, useEffect, useCallback } = React;
+
+/* ─── MOCK DATA ─── */
+const CATEGORIES = ['Todos','Pizzería','Mariscos','Hamburguesas','Sushi','Colombiana','Italiana','Saludable','Panadería'];
+const ZONES      = ['Todas','Norte','Sur','Centro','Oriente','Occidente'];
+const STATUSES_FILTER = ['Todos','Activo','Pendiente','Inactivo'];
+
+/* ─── ROLE PERMISSIONS CONFIG ─── */
+const ROLE_CONFIG = {
+  'Inside Sales': {
+    navSections:     ['chats','contacts','templates'],
+    canNewMessage:   true,
+    canZoneFilter:   true,
+    canViewAllZones: true,
+    tabs:            ['asignados','activos'],
+    bannerFields:    ['opsZone','categoria','clientes','pro','sentimiento','fuente','clasificacion','estado'],
+    canSendMessages: true,
+  },
+  'Farmer Mass': {
+    navSections:     ['chats','contacts','templates'],
+    canNewMessage:   true,
+    canZoneFilter:   true,
+    canViewAllZones: false,
+    tabs:            ['asignados','activos'],
+    bannerFields:    ['opsZone','categoria','clientes','sentimiento','fuente','estado'],
+    canSendMessages: true,
+  },
+  'Brand Development': {
+    navSections:     ['chats','templates'],
+    canNewMessage:   true,
+    canZoneFilter:   false,
+    canViewAllZones: false,
+    tabs:            ['activos'],
+    bannerFields:    ['categoria','sentimiento','fuente','clasificacion','estado'],
+    canSendMessages: true,
+  },
+};
+
+const initialAliados = [
+  { id:1,  name:'La Brasa Dorada',       phone:'+57 300 123 4567', category:'Colombiana',   zone:'Norte',    status:'Activo',    avatar:'LB', color:'#E11D48', lastMsg:'Listo! Ya firmamos el contrato 🎉',       lastTime:'10:32', unread:0, pinned:true,  opsZone:1243, clientes:892, pro:34, sentimiento:'Positivo',  fuente:'Self Onboarding', clasificacion:87, msgs:[
+    {id:1,from:'me',  text:'¡Hola Carlos! Soy David de Rappi. Vi que registraron su restaurante en nuestro portal. Quería acompañarlos en el proceso de activación 🙌',time:'09:10'},
+    {id:2,from:'them',text:'Hola David! Sí, lo hicimos ayer. Nos interesa mucho pero no entendemos bien cómo funciona la comisión.',time:'09:14'},
+    {id:3,from:'me',  text:'Claro, te explico. Rappi maneja una comisión del 18% sobre ventas netas. A cambio tienes visibilidad con más de 800K usuarios solo en la zona norte 📱',time:'09:16'},
+    {id:4,from:'them',text:'¿Y el tiempo de pago cómo es?',time:'09:20'},
+    {id:5,from:'me',  text:'Pagos semanales directo a tu cuenta. Además el primer mes te damos visibilidad premium sin costo adicional para que arranques fuerte 💪',time:'09:23'},
+    {id:6,from:'them',text:'Eso suena bien. ¿Qué necesitamos para activar la cuenta?',time:'09:28'},
+    {id:7,from:'me',  text:'Solo RUT, cámara de comercio y menú fotográfico. Nuestro equipo les ayuda a subir el menú sin costo. ¿Tienen las fotos listas?',time:'09:31'},
+    {id:8,from:'them',text:'Tenemos algunas pero no son profesionales...',time:'09:45'},
+    {id:9,from:'me',  text:'No se preocupen! Tenemos un aliado fotógrafo que hace sesiones desde $150.000. Se recuperan en el primer fin de semana 📸',time:'09:47'},
+    {id:10,from:'them',text:'Perfecto, agendemos eso. ¿Y el contrato cuándo se firma?',time:'10:02'},
+    {id:11,from:'me',  text:'Te envío el contrato digital hoy mismo por correo. Se firma en 5 minutos desde el celular ✍️',time:'10:05'},
+    {id:12,from:'them',text:'Listo! Ya firmamos el contrato 🎉',time:'10:32'},
+  ]},
+  { id:2,  name:'Sushi Yuki',             phone:'+57 301 234 5678', category:'Sushi',       zone:'Centro',   status:'Activo',    avatar:'SY', color:'#7C3AED', lastMsg:'¿La comisión baja si vendemos más?',      lastTime:'09:58', unread:3, pinned:true,  opsZone:567,  clientes:421, pro:18, sentimiento:'Neutral',   fuente:'Rappi Lead', clasificacion:62, msgs:[
+    {id:1,from:'me',  text:'¡Buenos días! Soy David de Rappi. Los contactamos porque identificamos que Sushi Yuki tiene excelente reputación en Google y creemos que serían un gran aliado 🍣',time:'08:30'},
+    {id:2,from:'them',text:'Hola, sí hemos pensado en plataformas de delivery pero nos preocupa la competencia y los costos.',time:'08:35'},
+    {id:3,from:'me',  text:'Entiendo la preocupación. En Rappi los restaurantes de sushi en la zona centro venden en promedio $4.2M adicionales al mes. ¿Eso cubriría sus costos fijos?',time:'08:38'},
+    {id:4,from:'them',text:'Eso sería importante sí. ¿Cuál es la comisión exacta?',time:'08:41'},
+    {id:5,from:'me',  text:'18% sobre ventas netas. Pero con el volumen que manejan ustedes podríamos hablar de un acuerdo especial del 15%. Déjenme consultarlo con mi jefe 🤝',time:'08:45'},
+    {id:6,from:'them',text:'Bien, y ¿qué pasa si el repartidor daña el pedido?',time:'08:52'},
+    {id:7,from:'me',  text:'Rappi asume el 100% de los daños en transporte. Ustedes solo preparan el pedido y nosotros garantizamos la entrega perfecta 👌',time:'08:55'},
+    {id:8,from:'them',text:'¿Y si queremos pausar en temporadas bajas?',time:'09:10'},
+    {id:9,from:'me',  text:'Total libertad. Pueden activar o pausar la tienda cuando quieran desde el Partner Portal, sin penalizaciones 👍',time:'09:12'},
+    {id:10,from:'them',text:'¿La comisión baja si vendemos más?',time:'09:58'},
+  ]},
+  { id:3,  name:'Pizza Napolitana',       phone:'+57 302 345 6789', category:'Pizzería',    zone:'Sur',      status:'Activo',    avatar:'PN', color:'#DC2626', lastMsg:'Mandamos los documentos al correo ahora!', lastTime:'09:45', unread:1, pinned:false, opsZone:2108, clientes:1340, pro:52, sentimiento:'Positivo',  fuente:'Lead Generation', clasificacion:91, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Le escribo de Rappi. Vimos su pizzería en Instagram y nos encantó. Con más de 1.300 reseñas en Google serían de los mejores en Rappi zona sur 🍕',time:'09:00'},
+    {id:2,from:'them',text:'Gracias! Hemos recibido varias propuestas de plataformas. ¿Qué nos diferencia con Rappi?',time:'09:08'},
+    {id:3,from:'me',  text:'Rappi tiene el 62% del market share de delivery en Colombia. También ofrecemos Rappi Ads para que aparezcan primero en búsquedas, y RappiPay para pagos instantáneos 🚀',time:'09:12'},
+    {id:4,from:'them',text:'¿Tienen integración con nuestro POS? Usamos Siesa.',time:'09:18'},
+    {id:5,from:'me',  text:'¡Sí! Tenemos integración nativa con Siesa. El equipo técnico los ayuda con la configuración sin costo. Normalmente tarda 2 días hábiles ⚙️',time:'09:21'},
+    {id:6,from:'them',text:'Excelente. ¿Qué necesitan de nosotros para empezar?',time:'09:30'},
+    {id:7,from:'me',  text:'Cámara de comercio vigente, RUT, foto del establecimiento y menú. ¿Los tienen a mano?',time:'09:33'},
+    {id:8,from:'them',text:'Mandamos los documentos al correo ahora!',time:'09:45'},
+  ]},
+  { id:4,  name:'El Rincón Costeño',     phone:'+57 303 456 7890', category:'Colombiana',  zone:'Oriente',  status:'Pendiente', avatar:'RC', color:'#D97706', lastMsg:'Perfecto, los espero mañana entonces 🙌',  lastTime:'Ayer',   unread:0, pinned:false, opsZone:389,  clientes:204, pro:7,  sentimiento:'Negativo',  fuente:'Self Onboarding', clasificacion:38, msgs:[
+    {id:1,from:'me',  text:'Hola! Vi que iniciaron el proceso de registro hace 3 días pero quedó incompleto. ¿Puedo ayudarlos a terminarlo hoy?',time:'Ayer 10:00'},
+    {id:2,from:'them',text:'Sí, es que tuvimos muchos clientes esta semana y no hemos podido.',time:'Ayer 10:15'},
+    {id:3,from:'me',  text:'Entiendo perfectamente 😄 Precisamente por eso Rappi les puede ayudar a manejar ese volumen. ¿Tienen 10 minutos ahora?',time:'Ayer 10:17'},
+    {id:4,from:'them',text:'Ahorita no. ¿Más tarde?',time:'Ayer 10:20'},
+    {id:5,from:'me',  text:'Claro! Los llamo a las 4pm. Solo necesito que tengan el RUT y cámara de comercio a la mano 📄',time:'Ayer 10:21'},
+    {id:6,from:'them',text:'Ok pero es que no encuentro la cámara de comercio actualizada.',time:'Ayer 16:05'},
+    {id:7,from:'me',  text:'No se preocupen, la pueden renovar online en confecámaras.com en 10 minutos y cuesta $43.000. Sin eso no podemos activar la cuenta desafortunadamente 🙏',time:'Ayer 16:10'},
+    {id:8,from:'them',text:'Mañana sin falta les enviamos todo.',time:'Ayer 16:30'},
+    {id:9,from:'me',  text:'Perfecto, los espero mañana entonces 🙌',time:'Ayer 16:45'},
+  ]},
+  { id:5,  name:'Mar y Sabor',            phone:'+57 304 567 8901', category:'Mariscos',   zone:'Norte',    status:'Activo',    avatar:'MS', color:'#0891B2', lastMsg:'Los contacto el lunes para confirmar activación 🚀',lastTime:'Ayer',unread:0, pinned:false, opsZone:874,  clientes:610, pro:29, sentimiento:'Positivo',  fuente:'Rappi Lead', clasificacion:75, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Soy David de Rappi. Los identificamos como uno de los mejores mariscos de la zona norte. ¿Han pensado en delivery? 🦐',time:'Ayer 09:00'},
+    {id:2,from:'them',text:'Sí nos interesa mucho. ¿Cómo funciona la logística?',time:'Ayer 09:10'},
+    {id:3,from:'me',  text:'Rappi maneja toda la logística: repartidores, seguimiento en tiempo real y soporte al cliente. Ustedes solo cocinan y nosotros llevamos 🛵',time:'Ayer 09:13'},
+    {id:4,from:'them',text:'¿Y el empaque para mariscos? Necesitamos algo especial para que lleguen frescos.',time:'Ayer 09:20'},
+    {id:5,from:'me',  text:'Excelente punto. Les puedo conectar con nuestro proveedor de empaques isotérmicos con descuento para aliados Rappi. Funciona perfecto para mariscos 🧊',time:'Ayer 09:24'},
+    {id:6,from:'them',text:'Eso nos interesa. ¿Podemos arrancar esta semana?',time:'Ayer 09:35'},
+    {id:7,from:'me',  text:'¡Claro! Si me envían los documentos hoy, los activamos en 48 horas. Incluso podemos hacer un lanzamiento con descuento especial el primer fin de semana 🎉',time:'Ayer 09:38'},
+    {id:8,from:'them',text:'¡Arrancamos el lunes entonces! 🦞',time:'Ayer 09:55'},
+    {id:9,from:'me',  text:'Los contacto el lunes para confirmar activación 🚀',time:'Ayer 10:02'},
+  ]},
+  { id:6,  name:'Burger Bros',            phone:'+57 305 678 9012', category:'Hamburguesas',zone:'Occidente',status:'Activo',    avatar:'BB', color:'#16A34A', lastMsg:'Dale, esperamos tu llamada mañana 👍',    lastTime:'Ayer',   unread:2, pinned:false, opsZone:1556, clientes:983, pro:41, sentimiento:'Positivo',  fuente:'Lead Generation', clasificacion:83, msgs:[
+    {id:1,from:'me',  text:'¡Hola Burger Bros! Les escribe David de Rappi. Vimos que tienen 4 locales en occidente. ¿Han considerado centralizar el delivery con nosotros?',time:'Ayer 14:00'},
+    {id:2,from:'them',text:'Sí hemos pensado. Actualmente manejamos domicilios propios pero es un caos.',time:'Ayer 14:08'},
+    {id:3,from:'me',  text:'Entiendo. Con Rappi eliminan ese headache. Un solo panel para los 4 locales, pagos unificados y reportes en tiempo real 📊',time:'Ayer 14:11'},
+    {id:4,from:'them',text:'¿Pueden manejar alto volumen? Los fines de semana tenemos más de 200 pedidos.',time:'Ayer 14:18'},
+    {id:5,from:'me',  text:'Sin problema. Tenemos aliados con 500+ pedidos diarios. La plataforma escala automáticamente y pueden configurar límite de pedidos por hora si lo necesitan ✅',time:'Ayer 14:22'},
+    {id:6,from:'them',text:'¿Y si el repartidor tarda mucho y el cliente se queja?',time:'Ayer 14:30'},
+    {id:7,from:'me',  text:'Rappi garantiza el tiempo de entrega. Si hay demora, nosotros manejamos el reembolso al cliente. Ustedes no pierden la venta ni la reputación 🛡️',time:'Ayer 14:33'},
+    {id:8,from:'them',text:'Dale, esperamos tu llamada mañana 👍',time:'Ayer 15:10'},
+  ]},
+  { id:7,  name:'Trattoria da Marco',     phone:'+57 306 789 0123', category:'Italiana',   zone:'Centro',   status:'Inactivo',  avatar:'TM', color:'#9333EA', lastMsg:'Necesitamos más tiempo para decidir.',    lastTime:'Lun',    unread:0, pinned:false, opsZone:221,  clientes:178, pro:5,  sentimiento:'Negativo',  fuente:'Self Onboarding', clasificacion:29, msgs:[
+    {id:1,from:'me',  text:'¡Buenas tardes Marco! Soy David de Rappi. Sé que evaluaron unirse hace unos meses. ¿Qué frenó la decisión?',time:'Lun 09:00'},
+    {id:2,from:'them',text:'Honestamente la comisión del 18% nos parece muy alta para pasta y vinos.',time:'Lun 09:08'},
+    {id:3,from:'me',  text:'Lo entiendo. Por eso para restaurantes de experiencia gastronómica tenemos un modelo diferente donde el ticket promedio alto compensa. ¿Cuál es su ticket promedio?',time:'Lun 09:12'},
+    {id:4,from:'them',text:'Entre $45.000 y $80.000 por persona.',time:'Lun 09:20'},
+    {id:5,from:'me',  text:'Con ese ticket, con solo 15 pedidos al día generan $900K en ventas adicionales. La comisión sería $162K pero la ganancia neta de $738K es 100% incremental 💡',time:'Lun 09:24'},
+    {id:6,from:'them',text:'¿Y los clientes de Rappi van a pedir vino?',time:'Lun 09:35'},
+    {id:7,from:'me',  text:'¡Sí! Tenemos categoría de licores activa. Muchos aliados de gastronomía venden maridajes completos por delivery con excelentes resultados 🍷',time:'Lun 09:38'},
+    {id:8,from:'them',text:'Necesitamos más tiempo para decidir.',time:'Lun 10:00'},
+    {id:9,from:'me',  text:'Entendido Marco, no hay problema. Los contacto la próxima semana 🤝',time:'Lun 10:05'},
+  ]},
+  { id:8,  name:'Green Bowl',             phone:'+57 307 890 1234', category:'Saludable',  zone:'Norte',    status:'Activo',    avatar:'GB', color:'#059669', lastMsg:'Les envío los documentos de activación ahora 📧', lastTime:'Lun',    unread:0, pinned:false, opsZone:693,  clientes:487, pro:22, sentimiento:'Positivo',  fuente:'Rappi Lead', clasificacion:70, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Soy David de Rappi. La comida saludable es nuestra categoría de mayor crecimiento, +67% este año. Green Bowl encajaría perfectamente 🥑',time:'Lun 10:00'},
+    {id:2,from:'them',text:'¡Qué bueno saberlo! Somos de nicho pero tenemos clientes muy fieles.',time:'Lun 10:08'},
+    {id:3,from:'me',  text:'Eso es exactamente lo que busca Rappi. Los usuarios fitness usan la app a diario. Con sus platos ya armados pueden tener excelente conversión 📈',time:'Lun 10:11'},
+    {id:4,from:'them',text:'¿Tienen algún programa especial para marcas saludables?',time:'Lun 10:20'},
+    {id:5,from:'me',  text:'¡Sí! Tenemos la categoría "Saludable" destacada en la app donde solo aparecen restaurantes certificados. Les daríamos ese badge desde el inicio 🏅',time:'Lun 10:23'},
+    {id:6,from:'them',text:'¿Y cómo manejan los alérgenos en el menú digital?',time:'Lun 10:35'},
+    {id:7,from:'me',  text:'Cada producto tiene campos para alérgenos, ingredientes y opciones de personalización. Sus clientes pueden filtrar por gluten free, vegano, etc. 🌱',time:'Lun 10:38'},
+    {id:8,from:'them',text:'¡Nos convencieron! ¿Cuándo arrancamos? 🥗',time:'Lun 14:30'},
+    {id:9,from:'me',  text:'Les envío los documentos de activación ahora 📧',time:'Lun 14:35'},
+  ]},
+  { id:9,  name:'Panadería El Trigal',   phone:'+57 308 901 2345', category:'Panadería',  zone:'Sur',      status:'Pendiente', avatar:'PT', color:'#B45309', lastMsg:'¿Pueden llamarnos esta tarde a las 4?',   lastTime:'Dom',    unread:1, pinned:false, opsZone:312,  clientes:195, pro:8,  sentimiento:'Neutral',   fuente:'Lead Generation', clasificacion:44, msgs:[
+    {id:1,from:'me',  text:'¡Buenos días! Soy David de Rappi. Las panaderías son uno de nuestros segmentos con mayor crecimiento en desayunos y onces 🥐',time:'Dom 09:30'},
+    {id:2,from:'them',text:'Nos llegan muchas propuestas. ¿Qué nos ofrecen diferente?',time:'Dom 10:00'},
+    {id:3,from:'me',  text:'Rappi tiene el 70% del tráfico de delivery en el horario de 7am a 11am en su zona. Nadie les da esa visibilidad en desayunos ☕',time:'Dom 10:04'},
+    {id:4,from:'them',text:'Interesante. ¿Y cómo se maneja el inventario? Nosotros producimos por lotes.',time:'Dom 10:15'},
+    {id:5,from:'me',  text:'Pueden activar y pausar productos en tiempo real desde el tablet. Si se acaba el croissant, lo pausan en 2 clicks y listo. Sin pedidos que no puedan cumplir 👌',time:'Dom 10:18'},
+    {id:6,from:'them',text:'¿Pueden llamarnos esta tarde a las 4?',time:'Dom 11:00'},
+  ]},
+  { id:10, name:'Mariscos El Puerto',    phone:'+57 309 012 3456', category:'Mariscos',   zone:'Oriente',  status:'Activo',    avatar:'MP', color:'#FF441F', lastMsg:'Confirmado! Los veo el viernes a las 3pm en el local 📍', lastTime:'Dom',    unread:0, pinned:false, opsZone:1021, clientes:743, pro:33, sentimiento:'Positivo',  fuente:'Self Onboarding', clasificacion:79, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Vi que completaron el registro en Rappi. ¡Bienvenidos! Quería presentarme y acompañarlos en la activación 👋',time:'Dom 08:30'},
+    {id:2,from:'them',text:'Gracias! Ya subimos el menú pero tenemos dudas sobre cómo configurar los horarios de entrega.',time:'Dom 08:40'},
+    {id:3,from:'me',  text:'Perfecto, eso lo resolvemos en 10 minutos. También quisiera recomendarles activar "Rappi Prime" desde el inicio, les da un 30% más de visibilidad 🌟',time:'Dom 08:44'},
+    {id:4,from:'them',text:'¿Eso tiene costo adicional?',time:'Dom 08:50'},
+    {id:5,from:'me',  text:'Los primeros 2 meses son gratis para aliados nuevos. Después $180.000/mes pero con ese plus de ventas se paga solo en la primera semana 💰',time:'Dom 08:53'},
+    {id:6,from:'them',text:'Interesante. ¿Podemos hacer una reunión para ver todo esto en detalle?',time:'Dom 09:00'},
+    {id:7,from:'me',  text:'¡Claro! ¿El viernes a las 3pm les funciona? Voy personalmente al local 📍',time:'Dom 09:03'},
+    {id:8,from:'them',text:'Confirmamos. ¡Nos vemos el viernes! 🤝',time:'Dom 09:10'},
+    {id:9,from:'me',  text:'Confirmado! Los veo el viernes a las 3pm en el local 📍',time:'Dom 09:15'},
+  ]},
+  { id:11, name:'Asadero Los Pinos',     phone:'+57 310 123 4567', category:'Colombiana', zone:'Sur',      status:'Activo',    avatar:'AP', color:'#B91C1C', lastMsg:'¡De nada! Les envío la propuesta completa por correo hoy 📨', lastTime:'Sáb',   unread:0, pinned:false, opsZone:788,  clientes:532, pro:25, sentimiento:'Positivo',  fuente:'Rappi Lead', clasificacion:68, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Soy David de Rappi. Los tenemos identificados como uno de los mejores asaderos de la zona. ¿Han considerado expandirse a delivery? 🥩',time:'Sáb 10:00'},
+    {id:2,from:'them',text:'Sí lo hemos pensado pero nos preocupa que la calidad de la carne no llegue bien.',time:'Sáb 10:10'},
+    {id:3,from:'me',  text:'Entendemos esa preocupación. Tenemos aliados de parrilla que usan empaques sellados al vacío con mantenimiento de temperatura. La carne llega perfecta 🔥',time:'Sáb 10:14'},
+    {id:4,from:'them',text:'¿Y el radio de cobertura? No queremos pedidos muy lejos.',time:'Sáb 10:25'},
+    {id:5,from:'me',  text:'Ustedes definen el radio desde el panel. Pueden arrancar con 3km e ir ampliando según la demanda. Total control 📍',time:'Sáb 10:28'},
+    {id:6,from:'them',text:'Eso nos da tranquilidad. ¿Hay algún apoyo para el primer mes?',time:'Sáb 10:40'},
+    {id:7,from:'me',  text:'¡Sí! Primer mes con comisión reducida al 12% y les hacemos una campaña de lanzamiento en redes sociales de Rappi. Es parte del programa de nuevos aliados 🎁',time:'Sáb 10:44'},
+    {id:8,from:'them',text:'Eso sería genial, muchas gracias David!',time:'Sáb 16:00'},
+    {id:9,from:'me',  text:'¡De nada! Les envío la propuesta completa por correo hoy 📨',time:'Sáb 16:05'},
+  ]},
+  { id:12, name:'Wok Express',           phone:'+57 311 234 5678', category:'Sushi',      zone:'Occidente',status:'Inactivo',  avatar:'WE', color:'#6D28D9', lastMsg:'Entiendo completamente. Quedo pendiente por si cambian de opinión 🙌', lastTime:'Sáb',   unread:0, pinned:false, opsZone:143,  clientes:98,  pro:2,  sentimiento:'Negativo',  fuente:'Lead Generation', clasificacion:15, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Soy David de Rappi. Los identificamos como una opción de wok rápido en occidente. ¿Les interesa sumar un canal de delivery?',time:'Sáb 09:00'},
+    {id:2,from:'them',text:'La verdad estamos pasando por un momento difícil. Tuvimos que reducir personal.',time:'Sáb 09:15'},
+    {id:3,from:'me',  text:'Entiendo. Precisamente Rappi puede ser la solución: no necesitan repartidores propios y pueden generar ingresos sin aumentar costos fijos 💡',time:'Sáb 09:18'},
+    {id:4,from:'them',text:'¿Y si no podemos cumplir con los pedidos por falta de personal en cocina?',time:'Sáb 09:30'},
+    {id:5,from:'me',  text:'Pueden poner límite de pedidos simultáneos. Si solo pueden atender 5 pedidos a la vez, la plataforma pausa automáticamente cuando lleguen a ese límite ⚙️',time:'Sáb 09:33'},
+    {id:6,from:'them',text:'No creo que sea el momento para nosotros.',time:'Sáb 11:00'},
+    {id:7,from:'me',  text:'Entiendo completamente. Quedo pendiente por si cambian de opinión 🙌',time:'Sáb 11:05'},
+  ]},
+  { id:13, name:'Tacos El Paisa',        phone:'+57 312 345 6789', category:'Colombiana', zone:'Norte',    status:'Activo',    avatar:'TP', color:'#D97706', lastMsg:'¿Qué documentos necesitamos para arrancar?', lastTime:'Hoy',    unread:0, pinned:false, opsZone:456,  clientes:312, pro:14, sentimiento:'Positivo',  fuente:'Rappi Lead',      clasificacion:61, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Soy David de Rappi. Los vimos en el mercado de las pulgas y su concepto de tacos artesanales es exactamente lo que buscan los usuarios de la zona norte 🌮',time:'Hoy 09:00'},
+    {id:2,from:'them',text:'¡Gracias! Siempre hemos querido crecer con delivery pero no sabemos por dónde empezar.',time:'Hoy 09:12'},
+    {id:3,from:'me',  text:'El proceso es muy sencillo: registro, carga del menú y activación en 48 horas. Les acompañamos en cada paso 🚀',time:'Hoy 09:15'},
+    {id:4,from:'them',text:'¿Qué documentos necesitamos para arrancar?',time:'Hoy 09:28'},
+  ]},
+  { id:14, name:'Crepes & Co.',          phone:'+57 313 456 7890', category:'Panadería',  zone:'Centro',   status:'Activo',    avatar:'CC', color:'#0EA5E9', lastMsg:'¿Tienen opción para negocios pequeños?',    lastTime:'Hoy',    unread:0, pinned:false, opsZone:274,  clientes:187, pro:9,  sentimiento:'Neutral',   fuente:'Self Onboarding', clasificacion:48, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Vi que iniciaron el registro hace 2 días. ¿Tuvieron algún inconveniente para completarlo? Con gusto los ayudo 🙋',time:'Hoy 10:00'},
+    {id:2,from:'them',text:'No, simplemente teníamos dudas sobre si Rappi funciona para negocios como el nuestro.',time:'Hoy 10:15'},
+    {id:3,from:'me',  text:'¡Claro que sí! Tenemos más de 200 negocios de crepes y pastelería en la plataforma. La categoría "Desayunos" es una de las más buscadas en la app ☕',time:'Hoy 10:18'},
+    {id:4,from:'them',text:'¿Tienen opción para negocios pequeños?',time:'Hoy 10:35'},
+  ]},
+  { id:15, name:'La Leña Parrilla',      phone:'+57 314 567 8901', category:'Colombiana', zone:'Sur',      status:'Activo',    avatar:'LP', color:'#7C2D12', lastMsg:'¿Y si los pedidos llegan en hora pico?',    lastTime:'Hoy',    unread:0, pinned:false, opsZone:621,  clientes:445, pro:19, sentimiento:'Neutral',   fuente:'Lead Generation', clasificacion:57, msgs:[
+    {id:1,from:'me',  text:'¡Buen día! Soy David de Rappi. La parrilla colombiana es tendencia y su nombre ya aparece en las búsquedas de la app en la zona sur 🥩',time:'Hoy 08:30'},
+    {id:2,from:'them',text:'¿En serio? No teníamos idea de eso.',time:'Hoy 08:45'},
+    {id:3,from:'me',  text:'¡Sí! Eso significa que hay demanda real de su producto sin que ustedes estén todavía activos. Imagínense con visibilidad completa 📈',time:'Hoy 08:48'},
+    {id:4,from:'them',text:'¿Y si los pedidos llegan en hora pico?',time:'Hoy 09:02'},
+  ]},
+  { id:16, name:'Dulce Tentación',       phone:'+57 315 678 9012', category:'Panadería',  zone:'Oriente',  status:'Activo',    avatar:'DT', color:'#BE185D', lastMsg:'¿Podemos vender tortas personalizadas?',   lastTime:'Hoy',    unread:0, pinned:false, opsZone:198,  clientes:134, pro:6,  sentimiento:'Positivo',  fuente:'Rappi Lead',      clasificacion:52, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Sus tortas son famosas en el oriente de la ciudad. Tenemos usuarios buscando pastelería de autor cada semana y su perfil encaja perfecto 🎂',time:'Hoy 11:00'},
+    {id:2,from:'them',text:'¡Qué lindo! Nosotros hacemos todo artesanal, ¿eso es un problema para los tiempos de Rappi?',time:'Hoy 11:15'},
+    {id:3,from:'me',  text:'Para nada. Pueden configurar tiempo de preparación extendido y los clientes lo ven antes de pedir. Muchos prefieren esperar por calidad artesanal 🍰',time:'Hoy 11:18'},
+    {id:4,from:'them',text:'¿Podemos vender tortas personalizadas?',time:'Hoy 11:32'},
+  ]},
+  { id:17, name:'Ramen Tokio',           phone:'+57 316 789 0123', category:'Sushi',      zone:'Norte',    status:'Activo',    avatar:'RT', color:'#DC2626', lastMsg:'¿Funciona bien para platos con caldo?',     lastTime:'Ayer',   unread:0, pinned:false, opsZone:342,  clientes:228, pro:11, sentimiento:'Neutral',   fuente:'Self Onboarding', clasificacion:59, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Soy David de Rappi. El ramen es la tendencia gastronómica del momento y en la zona norte no hay oferta en la app. Ustedes podrían dominarlo 🍜',time:'Ayer 14:00'},
+    {id:2,from:'them',text:'Nos interesa, pero tenemos miedo de que el caldo llegue frío o derramado.',time:'Ayer 14:12'},
+    {id:3,from:'me',  text:'Tenemos un proveedor de empaques especiales para sopas con tapa de presión. Varios aliados de ramen los usan con excelentes reseñas 🔒',time:'Ayer 14:15'},
+    {id:4,from:'them',text:'¿Funciona bien para platos con caldo?',time:'Ayer 14:30'},
+  ]},
+  { id:18, name:'Empanadas La Abuela',   phone:'+57 317 890 1234', category:'Colombiana', zone:'Occidente',status:'Activo',    avatar:'EA', color:'#92400E', lastMsg:'¿El repartidor llega al barrio El Jardín?', lastTime:'Ayer',   unread:0, pinned:false, opsZone:187,  clientes:124, pro:5,  sentimiento:'Positivo',  fuente:'Lead Generation', clasificacion:43, msgs:[
+    {id:1,from:'me',  text:'¡Buenas tardes! Soy David de Rappi. Sus empanadas son legendarias en occidente. ¿Alguna vez han pensado en llevarlas a más hogares de la ciudad? 🫔',time:'Ayer 15:00'},
+    {id:2,from:'them',text:'Claro, siempre hemos querido. ¿Pero llegan hasta barrios alejados?',time:'Ayer 15:18'},
+    {id:3,from:'me',  text:'¡Sí! Tenemos cobertura en más del 90% de la ciudad. El radio de entrega lo configuran ustedes según su capacidad de producción 🗺️',time:'Ayer 15:21'},
+    {id:4,from:'them',text:'¿El repartidor llega al barrio El Jardín?',time:'Ayer 15:40'},
+  ]},
+  { id:19, name:'Frutería Tropical',     phone:'+57 318 901 2345', category:'Saludable',  zone:'Centro',   status:'Activo',    avatar:'FT', color:'#15803D', lastMsg:'¿Cuánto tarda en llegar la primera venta?', lastTime:'Lun',    unread:0, pinned:false, opsZone:263,  clientes:171, pro:7,  sentimiento:'Positivo',  fuente:'Self Onboarding', clasificacion:55, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Soy David de Rappi. Completaron el registro pero aún no activaron el primer producto. ¿Puedo ayudarles a dar ese último paso? 🍉',time:'Lun 09:30'},
+    {id:2,from:'them',text:'Sí, es que queremos asegurarnos de que todo esté bien antes de abrir.',time:'Lun 09:45'},
+    {id:3,from:'me',  text:'Perfecto eso se llama ser responsable 💯 Hagamos una revisión del catálogo juntos y cuando esté listo lo activamos de una.',time:'Lun 09:48'},
+    {id:4,from:'them',text:'¿Cuánto tarda en llegar la primera venta?',time:'Lun 10:05'},
+  ]},
+  { id:20, name:'La Hamburguesería',     phone:'+57 319 012 3456', category:'Hamburguesas',zone:'Sur',     status:'Activo',    avatar:'LH', color:'#1D4ED8', lastMsg:'¿Puedo usar mi propio empaque?',            lastTime:'Lun',    unread:0, pinned:false, opsZone:509,  clientes:338, pro:16, sentimiento:'Neutral',   fuente:'Rappi Lead',      clasificacion:66, msgs:[
+    {id:1,from:'me',  text:'¡Hola! Soy David de Rappi. En la zona sur las hamburguesas artesanales tienen los mejores ratings de la app. La suya apareció mencionada en reseñas de Google 🍔',time:'Lun 11:00'},
+    {id:2,from:'them',text:'¿En serio? ¡Qué sorpresa! Llevamos 2 años y nunca hemos hecho delivery.',time:'Lun 11:12'},
+    {id:3,from:'me',  text:'¡Eso quiere decir que hay demanda reprimida! Sus clientes actuales los buscan online y no los encuentran. Podemos cambiar eso esta semana 🚀',time:'Lun 11:15'},
+    {id:4,from:'them',text:'¿Puedo usar mi propio empaque?',time:'Lun 11:28'},
+  ]},
+];
+
+/* ── Farmer Mass conversations ── */
+initialAliados[0].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Vi que los fines de semana aparecen cerrados desde las 8pm en la app. ¿Siguen atendiendo domicilios en ese horario?',time:'09:00'},
+  {id:2,from:'them',text:'Sí, cerramos el local a las 8 pero hacemos domicilios hasta las 10.',time:'09:08'},
+  {id:3,from:'me',  text:'¡Esas 2 horas son oro! En la zona norte el pico de pedidos nocturnos es 8-10pm. Están perdiendo ~20 pedidos cada noche 📈',time:'09:12'},
+  {id:4,from:'them',text:'Ah no sabíamos que el horario de delivery era independiente.',time:'09:16'},
+  {id:5,from:'me',  text:'¡Sí! En el Partner Portal: Mi Tienda → Horarios → Delivery. Lo configuran por separado. ¿Lo hacemos juntos ahora?',time:'09:18'},
+  {id:6,from:'them',text:'Dale, ya estoy dentro del portal.',time:'09:21'},
+  {id:7,from:'me',  text:'Perfecto. Extiendan jueves, viernes y sábado hasta las 10pm. Esos 3 días concentran el 70% del volumen nocturno 🔥',time:'09:23'},
+  {id:8,from:'them',text:'¡Listo, ya actualizamos! Gracias Matías 🙌',time:'09:38'},
+];
+initialAliados[1].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Su catálogo tiene 8 platos sin foto y 12 sin descripción. Eso les baja mucho la conversión 😬',time:'10:00'},
+  {id:2,from:'them',text:'Sí, no hemos tenido tiempo de actualizar todo eso.',time:'10:08'},
+  {id:3,from:'me',  text:'Los platos con foto + descripción tienen 47% más pedidos que los que no las tienen. ¿Les ayudo a mejorar el catálogo hoy?',time:'10:11'},
+  {id:4,from:'them',text:'¿Por dónde empezamos?',time:'10:18'},
+  {id:5,from:'me',  text:'Primero las fotos. Tenemos un programa de fotografía para aliados desde $120.000 la sesión. Incluye 10 platos editados 📸',time:'10:21'},
+  {id:6,from:'them',text:'¿Y las descripciones las podemos redactar con ustedes?',time:'10:28'},
+  {id:7,from:'me',  text:'¡Claro! Dígame su plato más vendido y le doy una descripción modelo que pueden replicar para los demás 🍣',time:'10:31'},
+  {id:8,from:'them',text:'El Sushi Volcán x8.',time:'10:33'},
+  {id:9,from:'me',  text:'"8 piezas de sushi volcán con salmón fresco, cubierto con mayonesa picante y cebollín tostado. Ideal para compartir 🌋🍣" — ¿Les gusta?',time:'10:36'},
+  {id:10,from:'them',text:'¡Perfecto! ¿Seguimos con los otros platos?',time:'10:48'},
+];
+initialAliados[2].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Quería presentarles una campaña de descuento cofinanciada para atraer nuevos usuarios esta semana 🎯',time:'11:00'},
+  {id:2,from:'them',text:'¿Cómo funciona el cofinanciamiento?',time:'11:08'},
+  {id:3,from:'me',  text:'Rappi pone el 50% del descuento y ustedes el otro 50%. Un 20% de descuento les cuesta solo el 10% real de cada venta 💡',time:'11:12'},
+  {id:4,from:'them',text:'¿Qué tipo de promo recomiendan para pizzas?',time:'11:20'},
+  {id:5,from:'me',  text:'"2x1 en pizza mediana los martes" es la más efectiva. Ese día tienen baja demanda y con la promo sus vecinos subieron 180% en ventas los martes 🍕',time:'11:24'},
+  {id:6,from:'them',text:'¿Cuánto dura y cómo medimos el resultado?',time:'11:32'},
+  {id:7,from:'me',  text:'La duración la definen ustedes. En el Partner Portal → Campañas → ver clics, pedidos y ROI en tiempo real. Total transparencia 📊',time:'11:35'},
+  {id:8,from:'them',text:'¡Arrancamos con el 2x1 esta semana! 🚀',time:'11:50'},
+];
+initialAliados[3].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Su tienda tuvo 3 cierres inesperados esta semana en horario activo. Eso afecta la visibilidad en el algoritmo 😟',time:'14:00'},
+  {id:2,from:'them',text:'Sí, tuvimos problemas de personal. Fue una semana difícil.',time:'14:10'},
+  {id:3,from:'me',  text:'Para esos casos existe el "Modo ocupado": limita pedidos al 50% sin cerrar la tienda. Así mantienen la reputación aunque estén con poco personal 🛡️',time:'14:14'},
+  {id:4,from:'them',text:'¿Dónde se activa eso?',time:'14:22'},
+  {id:5,from:'me',  text:'Partner Portal → Mi Tienda → Estado → "Limitar pedidos simultáneos". Pongan máximo 5 y la app pausa automáticamente al llegar a ese tope ⚙️',time:'14:25'},
+  {id:6,from:'them',text:'¿Y las malas calificaciones de esa semana se recuperan?',time:'14:32'},
+  {id:7,from:'me',  text:'Con consistencia en 30 días sí. También puedo activarles un descuento de reactivación esta semana para recuperar usuarios que se fueron 🎁',time:'14:35'},
+  {id:8,from:'them',text:'Mañana sin falta les enviamos todo.',time:'Ayer 16:30'},
+];
+initialAliados[4].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Sus platos de mariscos no tienen toppings configurados. Están dejando dinero sobre la mesa 🦐',time:'10:00'},
+  {id:2,from:'them',text:'¿Qué son los toppings en el sistema de Rappi?',time:'10:10'},
+  {id:3,from:'me',  text:'Son las personalizaciones que el cliente elige al pedir: "¿Con arroz o patacón? ¿Picante? ¿Porción doble de camarón?" Cada opción sube el ticket promedio 💰',time:'10:14'},
+  {id:4,from:'them',text:'¡Eso lo tenemos en local! Solo que no lo hemos subido.',time:'10:20'},
+  {id:5,from:'me',  text:'Aliados de mariscos con toppings activos tienen +28% de ticket vs sin toppings. En 30 minutos lo configuramos juntos 📈',time:'10:23'},
+  {id:6,from:'them',text:'¿Y las fotos? Algunas son muy antiguas.',time:'10:30'},
+  {id:7,from:'me',  text:'¡Perfecto momento para renovar todo! Toppings + fotos nuevas + descripción actualizada = catálogo de alta conversión. ¿Lo hacemos esta semana? 📸',time:'10:33'},
+  {id:8,from:'them',text:'¡Arrancamos el lunes entonces! 🦞',time:'Ayer 09:55'},
+];
+initialAliados[5].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola Burger Bros! Soy Matías de Rappi. Tengo una campaña que funciona muy bien para cadenas de hamburguesas con varios locales 🍔',time:'09:00'},
+  {id:2,from:'them',text:'Cuéntanos, ¿de qué se trata?',time:'09:10'},
+  {id:3,from:'me',  text:'"Lleva 2 combos, envío gratis" — Rappi cubre el costo del envío y ustedes captan usuarios nuevos que nunca han pedido en Burger Bros. Es captación pura 🎯',time:'09:14'},
+  {id:4,from:'them',text:'¿Cuántos usuarios nuevos podemos esperar?',time:'09:22'},
+  {id:5,from:'me',  text:'Con su volumen y los 4 locales, estimo entre 200-350 usuarios nuevos en la primera semana de campaña. Con datos reales después de 48h 📊',time:'09:26'},
+  {id:6,from:'them',text:'¿Y si queremos segmentar por local?',time:'09:35'},
+  {id:7,from:'me',  text:'¡Pueden activar la promo por local o para todos a la vez! Incluso pueden hacer A/B: promo en 2 locales y ver cuál tiene mejor resultado 🔬',time:'09:38'},
+  {id:8,from:'them',text:'Dale, esperamos tu llamada mañana 👍',time:'Ayer 15:10'},
+];
+initialAliados[6].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola Marco! Soy Matías de Rappi. Sus precios no se han actualizado en 4 meses y sus costos de insumos subieron. Están perdiendo margen en cada pedido 💰',time:'09:00'},
+  {id:2,from:'them',text:'Sí, subimos precios en local pero olvidamos actualizarlo en la app.',time:'09:08'},
+  {id:3,from:'me',  text:'Es urgente actualizarlos. ¿Cuánto subieron los precios en promedio?',time:'09:12'},
+  {id:4,from:'them',text:'Unos $3.000-$5.000 por plato.',time:'09:18'},
+  {id:5,from:'me',  text:'Con foto buena y descripción actualizada, ese ajuste de precio no afecta la conversión. Los clientes pagan más por percepción de calidad 🍷',time:'09:22'},
+  {id:6,from:'them',text:'¿Y si actualizamos también las fotos?',time:'09:30'},
+  {id:7,from:'me',  text:'¡Sí! Fotos nuevas + precios reales + descripción premium = catálogo de alta conversión. Un aliado italiano que hizo esto vio +40% de ingresos por pedido 📸',time:'09:33'},
+  {id:8,from:'them',text:'Necesitamos más tiempo para decidir.',time:'Lun 10:00'},
+];
+initialAliados[7].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Tienen 847 usuarios que no les han pedido en los últimos 30 días. ¿Les interesa reactivarlos? 🔄',time:'10:00'},
+  {id:2,from:'them',text:'¡Eso es mucho! ¿Cómo funciona la reactivación?',time:'10:10'},
+  {id:3,from:'me',  text:'Rappi les envía una notificación personalizada: "¡Te echamos de menos! 15% off en tu próximo bowl 🎉" — Rappi cofinancia el 50% del descuento 💡',time:'10:14'},
+  {id:4,from:'them',text:'¿Qué tasa de reactivación podemos esperar?',time:'10:22'},
+  {id:5,from:'me',  text:'En categoría saludable el promedio es 18-22%. Con 847 usuarios dormidos, eso son ~170 pedidos adicionales este mes 📈',time:'10:25'},
+  {id:6,from:'them',text:'¿Y para nuevos usuarios también tienen algo?',time:'10:32'},
+  {id:7,from:'me',  text:'¡Sí! Para nuevos usuarios el badge "Saludable Destacado" + primer pedido con envío gratis. Dos campañas diferentes, ambas cofinanciadas 🥑',time:'10:35'},
+  {id:8,from:'them',text:'¡Nos convencieron! ¿Cuándo arrancamos? 🥗',time:'Lun 14:30'},
+];
+initialAliados[8].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Buenos días! Soy Matías de Rappi. Su tienda no está activa los domingos a las 7am. Ese es el pico de desayunos en su zona 🥐',time:'09:30'},
+  {id:2,from:'them',text:'Es que abrimos a las 8am los domingos.',time:'09:40'},
+  {id:3,from:'me',  text:'¡Pero en la app aparecen cerrados hasta las 9am! Están perdiendo la hora más importante de la semana para una panadería ⏰',time:'09:43'},
+  {id:4,from:'them',text:'Eso sí que no sabíamos. ¿Lo arreglamos ahora?',time:'09:50'},
+  {id:5,from:'me',  text:'¡Claro! Y ya que entramos al portal, vi que no tienen el "Combo Desayuno Familiar". Ese ítem genera el 35% de ventas en panaderías similares 🏠',time:'09:53'},
+  {id:6,from:'them',text:'Lo tenemos en local. ¿Vale la pena subirlo?',time:'10:05'},
+  {id:7,from:'me',  text:'Totalmente. Ticket promedio del combo: $42.000 vs $11.000 de un producto individual. Los domingos la gente compra para toda la familia 👨‍👩‍👧‍👦',time:'10:08'},
+  {id:8,from:'them',text:'¿Pueden llamarnos esta tarde a las 4?',time:'Dom 11:00'},
+];
+initialAliados[9].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Son de nuestros mejores aliados en disponibilidad: 94% de uptime este mes 🏆 Por eso quiero ofrecerles algo especial.',time:'08:30'},
+  {id:2,from:'them',text:'¡Gracias! Intentamos ser muy constantes. ¿De qué se trata?',time:'08:38'},
+  {id:3,from:'me',  text:'El programa "Aliado Destacado": badge exclusivo en la app + campaña de descuento cofinanciada al 50%. Solo para aliados con +90% de uptime ✅',time:'08:42'},
+  {id:4,from:'them',text:'¿Qué porcentaje de descuento sería?',time:'08:50'},
+  {id:5,from:'me',  text:'Un 15% donde Rappi pone el 7.5% y ustedes el otro 7.5%. Con el badge de destacado, el volumen extra cubre con creces ese costo 📊',time:'08:54'},
+  {id:6,from:'them',text:'¿Cuántos usuarios nuevos podemos esperar con el badge?',time:'09:02'},
+  {id:7,from:'me',  text:'Aliados que activaron el badge vieron +35% de clics en la primera semana. Para su volumen actual eso sería ~150 pedidos adicionales al mes 🎯',time:'09:05'},
+  {id:8,from:'them',text:'Confirmamos. ¡Nos vemos el viernes! 🤝',time:'Dom 09:10'},
+];
+initialAliados[10].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Su Bandeja Paisa es el plato más buscado en su zona pero la foto actual no le hace justicia 😬 ¿Podemos mejorarla?',time:'10:00'},
+  {id:2,from:'them',text:'Sí, esa foto es muy vieja. La tomamos con el celular.',time:'10:10'},
+  {id:3,from:'me',  text:'Con foto profesional ese plato podría doblar sus pedidos. Es su producto estrella y merece presentación de estrella 📸',time:'10:13'},
+  {id:4,from:'them',text:'¿Cuánto cuesta la sesión fotográfica?',time:'10:20'},
+  {id:5,from:'me',  text:'$180.000 con nuestro fotógrafo aliado. 10 platos editados incluidos. ¿Vale la pena para ustedes?',time:'10:23'},
+  {id:6,from:'them',text:'Sí. ¿Y podemos actualizar precios también? Algunos están desactualizados.',time:'10:30'},
+  {id:7,from:'me',  text:'¡Perfecto combo! Fotos nuevas + precios actualizados + toppings configurados = catálogo completo de alta conversión. Lo hacemos en un día 💪',time:'10:33'},
+  {id:8,from:'them',text:'Eso sería genial, muchas gracias Matías!',time:'Sáb 16:00'},
+];
+initialAliados[11].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Este mes tuvieron 12 cierres inesperados en horario activo. Eso los penaliza en el ranking de visibilidad 😕',time:'09:00'},
+  {id:2,from:'them',text:'Ha sido complicado con el personal últimamente.',time:'09:10'},
+  {id:3,from:'me',  text:'Entiendo. El consejo es reducir el horario activo a los momentos donde tienen capacidad garantizada. Menos horas pero 100% confiables 🎯',time:'09:14'},
+  {id:4,from:'them',text:'¿No perdemos visibilidad con menos horas?',time:'09:22'},
+  {id:5,from:'me',  text:'Al contrario: el algoritmo premia la consistencia. 95% uptime en 6 horas supera a 60% uptime en 12 horas en términos de ranking 📈',time:'09:25'},
+  {id:6,from:'them',text:'¿Y en esas horas pico podemos hacer algo especial?',time:'09:32'},
+  {id:7,from:'me',  text:'¡Exacto! Activamos un descuento en esas horas pico para maximizar el volumen. Calidad + descuento en el momento preciso = conversión máxima 🔥',time:'09:35'},
+  {id:8,from:'them',text:'No creo que sea el momento para nosotros.',time:'Sáb 11:00'},
+];
+initialAliados[12].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Tacos El Paisa tiene buena demanda potencial en la zona norte. ¿Están actualizando el menú esta semana?',time:'Hoy 09:00'},
+  {id:2,from:'them',text:'Sí, queremos agregar combos familiares.',time:'Hoy 09:12'},
+  {id:3,from:'me',  text:'¡Perfecto! Los combos son los productos de mayor conversión en la app. Les recomiendo armarlos con descripción detallada y foto del set completo 📸',time:'Hoy 09:15'},
+  {id:4,from:'them',text:'¿Qué documentos necesitamos para arrancar?',time:'Hoy 09:28'},
+];
+initialAliados[13].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Crepes & Co. tiene disponibilidad irregular los fines de semana. Cerraron 6 veces a mitad de horario el mes pasado 😬',time:'Hoy 10:00'},
+  {id:2,from:'them',text:'Sí, tenemos problemas de personal los sábados.',time:'Hoy 10:18'},
+  {id:3,from:'me',  text:'Lo ideal es reducir el horario los sábados a las horas que sí tienen capacidad. Menos tiempo activo pero sin cierres inesperados mejora su ranking 📈',time:'Hoy 10:21'},
+  {id:4,from:'them',text:'¿Tienen opción para negocios pequeños?',time:'Hoy 10:35'},
+];
+initialAliados[14].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Buenos días! Soy Matías de Rappi. La Leña Parrilla tiene fotos muy oscuras en el catálogo. Los platos se ven poco apetitosos así 😅',time:'Hoy 08:30'},
+  {id:2,from:'them',text:'Sí, las tomamos de noche y salieron mal.',time:'Hoy 08:48'},
+  {id:3,from:'me',  text:'Con buena iluminación y plato bien presentado, sus pedidos de parrilla pueden crecer 40%. Es el cambio de mayor impacto que pueden hacer 🔥',time:'Hoy 08:51'},
+  {id:4,from:'them',text:'¿Y si los pedidos llegan en hora pico?',time:'Hoy 09:02'},
+];
+initialAliados[15].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Dulce Tentación no tiene ningún descuento activo. Sus competidores en repostería sí tienen y les ganan visibilidad 🎯',time:'Hoy 11:00'},
+  {id:2,from:'them',text:'Nos da miedo perder margen.',time:'Hoy 11:18'},
+  {id:3,from:'me',  text:'El descuento no tiene que ser grande. Un 10% en media docena de cupcakes atrae al usuario nuevo que después vuelve a precio lleno. Primer pedido = fidelización 💡',time:'Hoy 11:21'},
+  {id:4,from:'them',text:'¿Podemos vender tortas personalizadas?',time:'Hoy 11:32'},
+];
+initialAliados[16].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Ramen Tokio está cerrado los lunes pero en la app aparece como "abierto". Eso les genera cancelaciones 😕',time:'Ayer 14:00'},
+  {id:2,from:'them',text:'¡No sabíamos! ¿Cómo lo corregimos?',time:'Ayer 14:15'},
+  {id:3,from:'me',  text:'En el Partner Portal: Mi Tienda → Horarios → Excluir lunes. Tarda 2 minutos y evitan perder estrellas por ese error 🌟',time:'Ayer 14:18'},
+  {id:4,from:'them',text:'¿Funciona bien para platos con caldo?',time:'Ayer 14:30'},
+];
+initialAliados[17].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Las empanadas de La Abuela tienen 0 toppings configurados. Eso limita la personalización y reduce el ticket promedio 🫔',time:'Ayer 15:00'},
+  {id:2,from:'them',text:'¿Qué toppings le ponemos a una empanada?',time:'Ayer 15:22'},
+  {id:3,from:'me',  text:'Tipo de relleno, tamaño (mediana/grande), salsa (hogao, ají, ninguna) y si quieren agregar bebida al combo. Con eso el ticket sube 35% en promedio 💰',time:'Ayer 15:25'},
+  {id:4,from:'them',text:'¿El repartidor llega al barrio El Jardín?',time:'Ayer 15:40'},
+];
+initialAliados[18].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. Frutería Tropical aún no ha activado ninguna campaña de descuento. En categoría saludable los descuentos duplican la adquisición de usuarios nuevos 🍉',time:'Lun 09:30'},
+  {id:2,from:'them',text:'¿Qué tipo de descuento recomiendan?',time:'Lun 09:48'},
+  {id:3,from:'me',  text:'"Primer pedido con 20% off" es la más efectiva. Rappi cofinancia el 50% así que a ustedes solo les cuesta el 10% real. ¡Capturan usuarios nuevos casi gratis! 🎯',time:'Lun 09:51'},
+  {id:4,from:'them',text:'¿Cuánto tarda en llegar la primera venta?',time:'Lun 10:05'},
+];
+initialAliados[19].msgsFarmer = [
+  {id:1,from:'me',  text:'¡Hola! Soy Matías de Rappi. La Hamburguesería tiene 4 platos sin descripción en el catálogo. Los usuarios no compran lo que no entienden 🍔',time:'Lun 11:00'},
+  {id:2,from:'them',text:'¿Cuántas palabras debe tener una buena descripción?',time:'Lun 11:15'},
+  {id:3,from:'me',  text:'Entre 20 y 40 palabras: ingredientes principales, punto de cocción y diferenciador. Por ejemplo: "Medallón de res 180g a término medio, cheddar derretido, cebolla caramelizada y salsa especial de la casa." 🤤',time:'Lun 11:18'},
+  {id:4,from:'them',text:'¿Puedo usar mi propio empaque?',time:'Lun 11:28'},
+];
+
+const TEMPLATES = [
+  { id:1, name:'Saludo inicial',       text:'Hola {{nombre}}! Soy {{agente}} de tu equipo comercial. ¿Cómo puedo ayudarte hoy?' },
+  { id:2, name:'Seguimiento contrato', text:'Buenos días {{nombre}}! Te escribimos para hacer seguimiento a tu renovación de contrato. ¿Tienes alguna duda?' },
+  { id:3, name:'Confirmación reunión', text:'Hola {{nombre}}! Confirmamos nuestra reunión para el {{fecha}} a las {{hora}}. ¡Hasta pronto!' },
+  { id:4, name:'Envío de métricas',    text:'{{nombre}}, te compartimos el reporte de métricas de {{mes}}. ¡Excelentes resultados este período!' },
+  { id:5, name:'Bienvenida aliado',    text:'¡Bienvenido a la familia, {{nombre}}! Estamos emocionados de trabajar juntos. Cualquier duda, aquí estamos.' },
+];
+
+const STATUS_COLORS = { Activo:'#FF441F', Pendiente:'#F59E0B', Inactivo:'#6B7280' };
+const STATUS_BG     = { Activo:'bg-green-500/20 text-green-400', Pendiente:'bg-amber-500/20 text-amber-400', Inactivo:'bg-gray-500/20 text-gray-400' };
+
+/* ─── ICONS ─── */
+const Icon = ({ path, size=20, color='currentColor', className='' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8"
+       strokeLinecap="round" strokeLinejoin="round" className={className}>
+    <path d={path}/>
+  </svg>
+);
+const IC = {
+  search:   'M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z',
+  chat:     'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z',
+  contacts: 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75',
+  broadcast:'M22 12h-4l-3 9L9 3l-3 9H2',
+  template: 'M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8M10 9H8',
+  settings: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6zM19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z',
+  send:     'M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z',
+  attach:   'M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48',
+  emoji:    'M12 22c5.52 0 10-4.48 10-10S17.52 2 12 2 2 6.48 2 12s4.48 10 10 10zM8 13s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01',
+  more:     'M12 5v.01M12 12v.01M12 19v.01M12 6a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM12 13a1 1 0 1 1 0-2 1 1 0 0 1 0 2zM12 20a1 1 0 1 1 0-2 1 1 0 0 1 0 2z',
+  check2:   'M4 12l5 5L20 7',
+  pin:      'M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z',
+  home:     'M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM9 22V12h6v10',
+  filter:   'M22 3H2l8 9.46V19l4 2v-8.54L22 3z',
+  close:    'M18 6L6 18M6 6l12 12',
+  back:     'M19 12H5M12 19l-7-7 7-7',
+  user:     'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z',
+  phone:    'M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z',
+  plus:     'M12 5v14M5 12h14',
+  tag:      'M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82zM7 7h.01',
+};
+
+/* ─── AVATAR ─── */
+const Avatar = ({ label, color, size=40, online=false, photo=null }) => (
+  <div style={{ width:size, height:size, minWidth:size, background: photo ? 'transparent' : color, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize: size*0.35, fontWeight:700, color:'#fff', position:'relative', letterSpacing:0, overflow:'hidden' }}>
+    {photo
+      ? <img src={photo} alt={label} style={{ width:'100%', height:'100%', objectFit:'cover', borderRadius:'50%' }}/>
+      : label
+    }
+    {online && <span style={{ position:'absolute', bottom:1, right:1, width:10, height:10, background:'#FF441F', borderRadius:'50%', border:'2px solid #fff', zIndex:1 }}/>}
+  </div>
+);
+
+/* ─── CHAT BUBBLE ─── */
+const Bubble = ({ msg }) => {
+  const sent = msg.from === 'me';
+  return (
+    <div className={`flex ${sent ? 'justify-end' : 'justify-start'} mb-1 fade-in`}>
+      <div className={`relative max-w-xs md:max-w-md lg:max-w-lg px-3 py-2 rounded-lg text-sm shadow-sm ${sent ? 'msg-tail-sent' : 'msg-tail-recv'}`}
+           style={{ background: sent ? '#FFE8E0' : '#FFFFFF', color: '#1A1A1A' }}>
+        <p style={{ wordBreak:'break-word' }}>{msg.text}</p>
+        <div className={`flex items-center justify-end gap-1 mt-0.5 ${sent ? 'text-gray-500' : 'text-wa-text'}`} style={{ fontSize:11 }}>
+          <span>{msg.time}</span>
+          {sent && (
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FF441F" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 12l5 5L20 7"/><path d="M1 12l5 5L17 7" opacity="0.5"/>
+            </svg>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/* ─── CONTACT ROW ─── */
+const ContactRow = ({ aliado, active, onClick }) => (
+  <div onClick={onClick}
+       className={`flex items-center gap-3 px-3 py-3 cursor-pointer transition-colors ${active ? 'bg-wa-hover' : 'hover:bg-wa-hover'}`}
+       style={{ borderBottom:'1px solid #EDEDED' }}>
+    <div className="relative">
+      <Avatar label={aliado.avatar} color={aliado.color} size={46} online={aliado.status==='Activo'} />
+    </div>
+    <div className="flex-1 min-w-0">
+      <div className="flex justify-between items-baseline">
+        <span className="font-medium text-sm text-gray-900 truncate">{aliado.name}</span>
+        <span className={`text-xs ml-2 flex-shrink-0 ${aliado.unread > 0 ? 'text-wa-green' : 'text-wa-text'}`}>{aliado.lastTime}</span>
+      </div>
+      <div className="flex justify-between items-center mt-0.5">
+        <span className="text-xs text-wa-text truncate flex-1">{aliado.lastMsg}</span>
+        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+          {aliado.pinned && <Icon path={IC.pin} size={12} color="#AAAAAA"/>}
+          {aliado.unread > 0 && (
+            <span className="w-5 h-5 rounded-full bg-wa-green text-gray-900 text-xs flex items-center justify-center font-semibold">{aliado.unread}</span>
+          )}
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+/* ─── GABI AI ENGINE ─── */
+const getGabiAdvice = (aliado, role, msgs) => {
+  const last = [...msgs].reverse().find(m => m.from === 'them');
+  const lastText = last?.text?.toLowerCase() || '';
+  const sent  = aliado.sentimiento;
+  const status = aliado.status;
+
+  if (role === 'Inside Sales') {
+    // Objection: price / commission
+    if (lastText.includes('comisión') || lastText.includes('costo') || lastText.includes('precio')) {
+      return {
+        situacion: `${aliado.name} tiene objeción sobre costos. Este es un momento clave — no cedas en el precio, ancla en el valor.`,
+        acciones: [
+          { icon:'💡', text:'Presenta el ROI concreto: ventas adicionales estimadas vs costo de comisión' },
+          { icon:'📊', text:'Usa datos de restaurantes similares de su zona como referencia' },
+          { icon:'🎁', text:'Ofrece el beneficio de visibilidad premium el primer mes sin costo' },
+        ],
+        mensaje: `Entiendo la preocupación. Pensemos en términos de ROI: con solo 10 pedidos adicionales al día a $35.000 ticket promedio, generarías $10.5M al mes. La comisión sería $1.89M, ganancia neta incremental de $8.6M. ¿Vale la pena?`,
+      };
+    }
+    // Question about logistics / process
+    if (lastText.includes('cómo') || lastText.includes('como') || lastText.includes('qué necesitan') || lastText.includes('proceso')) {
+      return {
+        situacion: `${aliado.name} está preguntando por el proceso. Están evaluando activamente — esta es la señal para cerrar el siguiente paso concreto.`,
+        acciones: [
+          { icon:'📋', text:'Lista los 3 documentos necesarios de forma simple y sin fricción' },
+          { icon:'⏱️', text:'Da un tiempo estimado claro: "activamos en 48h con documentos"' },
+          { icon:'🤝', text:'Propón una fecha concreta para el siguiente paso' },
+        ],
+        mensaje: `Para activar necesitamos solo 3 cosas: RUT, cámara de comercio vigente y foto del local. Con eso listos hoy, los tenemos activos en 48 horas. ¿Los tienen a mano ahora?`,
+      };
+    }
+    // Positive / ready to close
+    if (sent === 'Positivo' || lastText.includes('listo') || lastText.includes('dale') || lastText.includes('arrancamos')) {
+      return {
+        situacion: `🟢 ${aliado.name} está en modo cierre. Alta probabilidad de conversión. Actúa rápido antes de que pierdan el impulso.`,
+        acciones: [
+          { icon:'✍️', text:'Envía el contrato digital ahora mismo por correo' },
+          { icon:'📅', text:'Agendarles la sesión de onboarding esta semana' },
+          { icon:'🎉', text:'Confirma la fecha de activación y el beneficio de lanzamiento' },
+        ],
+        mensaje: `¡Excelente! Te envío el contrato ahora mismo al correo. Se firma en 5 minutos desde el celular. Una vez firmado los activamos en 48h y arrancamos con visibilidad premium el primer mes 🚀`,
+      };
+    }
+    // Negative / hesitant
+    if (sent === 'Negativo' || lastText.includes('tiempo') || lastText.includes('después') || lastText.includes('evaluar')) {
+      return {
+        situacion: `⚠️ ${aliado.name} está frenando. Riesgo de perder la oportunidad. Necesitas crear urgencia sin presionar.`,
+        acciones: [
+          { icon:'⏰', text:'Menciona que la oferta de lanzamiento tiene cupo limitado esta semana' },
+          { icon:'🔍', text:'Identifica la objeción real — pregunta directamente qué los frena' },
+          { icon:'📞', text:'Propón una llamada de 10 minutos para resolver todas las dudas' },
+        ],
+        mensaje: `Entiendo que necesitan tiempo. Solo quiero mencionarles que el beneficio de primer mes con comisión reducida al 12% lo tenemos disponible para los próximos 3 aliados que activen esta semana. ¿Qué les haría sentir más seguros para avanzar?`,
+      };
+    }
+    // Default Inside Sales
+    return {
+      situacion: `Conversación activa con ${aliado.name}. Estado: ${status}. Mantén el foco en demostrar valor y avanzar al siguiente paso.`,
+      acciones: [
+        { icon:'📱', text:'Comparte un caso de éxito de un restaurante similar en su zona' },
+        { icon:'🎯', text:'Pregunta por su mayor reto actual en ventas para conectar la solución' },
+        { icon:'📅', text:'Propón un próximo paso concreto: llamada, visita o envío de contrato' },
+      ],
+      mensaje: `¡Hola! Quería contarles que un restaurante de ${aliado.category} en su zona activó hace 3 semanas y ya lleva $8M en ventas adicionales. ¿Les gustaría ver cómo lo lograron?`,
+    };
+  }
+
+  if (role === 'Farmer Mass') {
+    // Catalog issues
+    if (aliado.clasificacion < 50) {
+      return {
+        situacion: `⚠️ El catálogo de ${aliado.name} tiene score ${aliado.clasificacion}/100. Esto los penaliza en el ranking. Prioridad alta: mejorar fotos y descripciones.`,
+        acciones: [
+          { icon:'📸', text:'Ofrecer sesión fotográfica con el aliado fotógrafo ($120.000 - 10 platos)' },
+          { icon:'✍️', text:'Redactar descripciones para los 3 platos más vendidos juntos ahora' },
+          { icon:'🏷️', text:'Revisar que todos los precios estén actualizados en la app' },
+        ],
+        mensaje: `Revisé su tienda y vi que el catálogo puede mejorar bastante. Los platos con foto profesional + descripción tienen 47% más pedidos. ¿Les agendamos una sesión de mejora de catálogo esta semana?`,
+      };
+    }
+    // Availability issues
+    if (status === 'Inactivo' || lastText.includes('cerramos') || lastText.includes('cerrado') || lastText.includes('personal')) {
+      return {
+        situacion: `🔴 Problema de disponibilidad en ${aliado.name}. Los cierres inesperados afectan el ranking. Ayúdalos a configurar el modo ocupado.`,
+        acciones: [
+          { icon:'⚙️', text:'Configurar "Modo ocupado" para limitar pedidos en vez de cerrar' },
+          { icon:'📅', text:'Reducir horario activo a las horas de mayor capacidad garantizada' },
+          { icon:'📊', text:'Mostrarles el impacto de uptime en el ranking de visibilidad' },
+        ],
+        mensaje: `Hola! Vi que tuvieron algunos cierres esta semana. Existe el "Modo ocupado" que reduce el flujo de pedidos sin cerrar la tienda, así no pierden visibilidad. ¿Los ayudo a configurarlo ahora?`,
+      };
+    }
+    // Discount / acquisition opportunity
+    if (sent === 'Positivo' && aliado.clientes > 400) {
+      return {
+        situacion: `🟢 ${aliado.name} tiene buen volumen (${aliado.clientes.toLocaleString()} clientes) y sentimiento positivo. Momento ideal para proponer campaña de captación.`,
+        acciones: [
+          { icon:'🎯', text:'Presentar campaña de descuento cofinanciado 50/50 con Rappi' },
+          { icon:'🔄', text:'Activar campaña de reactivación para usuarios inactivos +30 días' },
+          { icon:'🏅', text:'Proponer el badge "Destacado" si tienen +90% de uptime' },
+        ],
+        mensaje: `¡Hola! Con su base de ${aliado.clientes.toLocaleString()} clientes tienen un potencial enorme de reactivación. Rappi cofinancia el 50% de un descuento de reactivación — ustedes solo ponen el otro 50%. ¿Les interesa activar eso esta semana?`,
+      };
+    }
+    // Toppings not configured
+    return {
+      situacion: `Aliado activo con oportunidad de mejora. Foco en maximizar ticket promedio y disponibilidad consistente.`,
+      acciones: [
+        { icon:'🍽️', text:'Verificar que todos los platos tienen toppings/modificadores configurados' },
+        { icon:'🕐', text:'Confirmar que los horarios de delivery están correctos en la app' },
+        { icon:'📈', text:'Revisar si hay productos populares en local que no están en la app' },
+      ],
+      mensaje: `¡Hola! Estoy revisando su tienda y vi que podrían aumentar el ticket promedio con toppings y modificadores en sus platos. Aliados similares tienen +22% de ticket con esa configuración. ¿Los ayudo a configurarlos?`,
+    };
+  }
+
+  // Default / Brand Development
+  return {
+    situacion: `Conversación con ${aliado.name}. Analiza el contexto y prepara tu próximo mensaje.`,
+    acciones: [
+      { icon:'💬', text:'Revisa el historial para identificar el tono adecuado' },
+      { icon:'🎯', text:'Define un objetivo claro para esta conversación' },
+      { icon:'📋', text:'Consulta las plantillas disponibles para mensajes clave' },
+    ],
+    mensaje: `¡Hola! ¿Cómo están? Quería hacer un seguimiento y ver cómo podemos apoyarlos esta semana.`,
+  };
+};
+
+/* ─── CHAT PANEL ─── */
+const ChatPanel = ({ aliado, onBack, onSend, perms, role }) => {
+  const [text, setText] = useState('');
+  const [showTemplates, setShowTemplates] = useState(false);
+  const [showInfo, setShowInfo] = useState(true);
+  const [showGabi, setShowGabi] = useState(false);
+  const endRef = useRef(null);
+
+  const msgs = role === 'Farmer Mass' ? (aliado.msgsFarmer || aliado.msgs) : aliado.msgs;
+  const gabiAdvice = React.useMemo(() => getGabiAdvice(aliado, role, msgs), [aliado.id, role, msgs.length]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior:'smooth' }); }, [msgs]);
+
+  const send = () => {
+    if (!text.trim()) return;
+    onSend(aliado.id, text.trim());
+    setText('');
+  };
+
+  const insertTemplate = (t) => {
+    setText(t.text);
+    setShowTemplates(false);
+  };
+
+  return (
+    <div className="flex flex-col h-full" style={{ background:'#F9F5F3' }}>
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0" style={{ background:'#FFFFFF', borderBottom:'1px solid #EDEDED' }}>
+        <button onClick={onBack} className="md:hidden p-1 hover:bg-black/5 rounded-full transition-colors">
+          <Icon path={IC.back} size={20} color="#777777"/>
+        </button>
+        <button onClick={() => setShowInfo(!showInfo)} className="flex items-center gap-3 flex-1 text-left hover:opacity-80 transition-opacity">
+          <Avatar label={aliado.avatar} color={aliado.color} size={40} online={aliado.status==='Activo'} />
+          <div>
+            <p className="font-semibold text-gray-900 text-sm">{aliado.name}</p>
+            <p className="text-xs" style={{ color: STATUS_COLORS[aliado.status] }}>{aliado.status} · {aliado.zone}</p>
+          </div>
+        </button>
+        <div className="flex items-center gap-2">
+          <button className="p-2 hover:bg-black/5 rounded-full transition-colors">
+            <Icon path={IC.phone} size={20} color="#777777"/>
+          </button>
+          <button className="p-2 hover:bg-black/5 rounded-full transition-colors">
+            <Icon path={IC.more} size={20} color="#777777"/>
+          </button>
+        </div>
+      </div>
+
+      {/* Info banner */}
+      {showInfo && (
+        <div className="flex-shrink-0 fade-in" style={{ background:'#F4F4F4', borderBottom:'1px solid #EDEDED' }}>
+          <div className="px-4 pt-3 pb-2">
+            {/* Row 1: name + zone + ver perfil */}
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="font-bold text-gray-900 text-sm truncate">{aliado.name}</span>
+                <span className="flex items-center gap-1 text-xs flex-shrink-0" style={{ color:'#888888' }}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="#888888"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                  {aliado.zone}
+                </span>
+              </div>
+              <button className="text-xs font-medium flex-shrink-0 ml-2" style={{ color:'#FF441F' }}>Ver Perfil →</button>
+            </div>
+
+            {/* Blue stats card — campos según perms.bannerFields */}
+            {(() => {
+              const bf = perms?.bannerFields || [];
+              const cardFields = [
+                { key:'opsZone',    label:'OPS ZONE',   render: () => <p className="font-bold text-lg leading-none" style={{ color:'#FF441F' }}>{aliado.opsZone?.toLocaleString()}</p> },
+                { key:'categoria',  label:'CATEGORÍA',  render: () => <p className="text-xs font-semibold text-gray-900 leading-tight">{aliado.category}</p> },
+                { key:'clientes',   label:'CLIENTES',   render: () => <p className="font-bold text-base leading-none text-gray-900">{aliado.clientes?.toLocaleString()}</p> },
+                { key:'pro',        label:'PRO',         render: () => <p className="font-bold text-base leading-none text-gray-900">{aliado.pro}</p> },
+                { key:'sentimiento',label:'SENTIMIENTO', render: () => <p className="text-xs font-semibold leading-tight" style={{ color: aliado.sentimiento==='Positivo'?'#16A34A':aliado.sentimiento==='Negativo'?'#DC2626':'#D97706' }}>{aliado.sentimiento==='Positivo'?'😊':aliado.sentimiento==='Negativo'?'😞':'😐'} {aliado.sentimiento}</p> },
+              ].filter(f => bf.includes(f.key));
+              return cardFields.length > 0 && (
+                <div className="rounded-xl px-3 py-2.5 mb-2" style={{ background:'#FFF0ED', border:'1px solid #FFCFC3' }}>
+                  <div className="flex items-center">
+                    {cardFields.map((f, i) => (
+                      <React.Fragment key={f.key}>
+                        {i > 0 && <div style={{ width:'1px', background:'#FFCFC3', alignSelf:'stretch', margin:'0 4px' }}/>}
+                        <div className="flex-1 text-center px-1">
+                          <p className="text-xs font-medium mb-0.5" style={{ color:'#888888' }}>{f.label}</p>
+                          {f.render()}
+                        </div>
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Row 2: FUENTE | CLASIFICACIÓN | ESTADO */}
+            {(() => {
+              const bf = perms?.bannerFields || [];
+              const showFuente = bf.includes('fuente');
+              const showClasif = bf.includes('clasificacion');
+              const showEstado = bf.includes('estado');
+              const items = [showFuente, showClasif, showEstado].filter(Boolean);
+              if (items.length === 0) return null;
+              return (
+                <div className="flex items-center gap-3 pt-1 pb-1">
+                  {showFuente && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-medium" style={{ color:'#888888' }}>FUENTE</span>
+                      <span className="text-xs font-semibold text-gray-900">{aliado.fuente}</span>
+                    </div>
+                  )}
+                  {showFuente && showClasif && <div style={{ width:'1px', height:'14px', background:'#D1D7DB' }}/>}
+                  {showClasif && (
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="text-xs font-medium flex-shrink-0" style={{ color:'#888888' }}>CLASIFICACIÓN</span>
+                      <div className="flex-1 rounded-full overflow-hidden" style={{ background:'#D1D7DB', height:'6px' }}>
+                        <div className="h-full rounded-full" style={{ width:`${aliado.clasificacion}%`, background: aliado.clasificacion>=70?'#16A34A':aliado.clasificacion>=40?'#F59E0B':'#EF4444' }}/>
+                      </div>
+                      <span className="text-xs font-bold flex-shrink-0" style={{ color:'#374151' }}>{aliado.clasificacion}</span>
+                    </div>
+                  )}
+                  {showClasif && showEstado && <div style={{ width:'1px', height:'14px', background:'#D1D7DB' }}/>}
+                  {!showClasif && showFuente && showEstado && <div style={{ width:'1px', height:'14px', background:'#D1D7DB' }}/>}
+                  {showEstado && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-medium" style={{ color:'#888888' }}>ESTADO</span>
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BG[aliado.status]}`}>{aliado.status}</span>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* Messages + Gabi float */}
+      <div className="flex-1 relative overflow-hidden">
+        <div className="h-full overflow-y-auto px-4 py-4 chat-bg">
+          <div className="flex flex-col justify-end min-h-full">
+            {msgs.map(m => <Bubble key={m.id} msg={m}/>)}
+            <div ref={endRef}/>
+          </div>
+        </div>
+
+        {/* Gabi floating button */}
+        <button
+          onClick={() => setShowGabi(!showGabi)}
+          className="absolute bottom-4 right-4 flex items-center gap-2 px-3 py-2 rounded-2xl shadow-lg transition-all"
+          style={{ background: showGabi ? '#FF441F' : '#1A1A1A', zIndex:20, boxShadow:'0 4px 20px rgba(0,0,0,0.25)' }}
+          title="Preguntarle a Gabi">
+          <span style={{ fontSize:18 }}>✨</span>
+          <span style={{ fontFamily:'Poppins', fontWeight:700, fontSize:13, color:'#FFFFFF', letterSpacing:0.3 }}>Gabi</span>
+        </button>
+
+        {/* Gabi panel */}
+        {showGabi && (
+          <div className="absolute inset-0 flex flex-col fade-in" style={{ background:'rgba(0,0,0,0.4)', zIndex:15 }}
+               onClick={e => { if(e.target===e.currentTarget) setShowGabi(false); }}>
+            <div className="absolute bottom-0 left-0 right-0 rounded-t-2xl flex flex-col fade-in"
+                 style={{ background:'#FFFFFF', maxHeight:'80%', boxShadow:'0 -8px 32px rgba(0,0,0,0.2)' }}>
+
+              {/* Gabi header */}
+              <div className="flex items-center gap-3 px-4 py-3 flex-shrink-0 rounded-t-2xl"
+                   style={{ background:'#1A1A1A' }}>
+                <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                     style={{ background:'#FF441F' }}>
+                  <span style={{ fontSize:18 }}>✨</span>
+                </div>
+                <div className="flex-1">
+                  <p style={{ fontFamily:'Poppins', fontWeight:700, fontSize:14, color:'#FFFFFF' }}>Gabi</p>
+                  <p style={{ fontSize:11, color:'#AAAAAA' }}>Tu asistente de ventas con IA</p>
+                </div>
+                <button onClick={() => setShowGabi(false)} className="p-1.5 rounded-full hover:bg-white/10 transition-colors">
+                  <Icon path={IC.close} size={16} color="#FFFFFF"/>
+                </button>
+              </div>
+
+              <div className="overflow-y-auto flex-1 px-4 py-4" style={{ background:'#F9F9F9' }}>
+
+                {/* Situation */}
+                <div className="rounded-xl p-3 mb-3" style={{ background:'#FFF3F0', border:'1px solid #FFD5CC' }}>
+                  <p className="text-xs font-bold mb-1" style={{ color:'#FF441F', textTransform:'uppercase', letterSpacing:0.5 }}>📍 Situación</p>
+                  <p className="text-sm text-gray-800 leading-relaxed">{gabiAdvice.situacion}</p>
+                </div>
+
+                {/* Actions */}
+                <div className="rounded-xl p-3 mb-3" style={{ background:'#FFFFFF', border:'1px solid #EDEDED' }}>
+                  <p className="text-xs font-bold mb-2" style={{ color:'#1A1A1A', textTransform:'uppercase', letterSpacing:0.5 }}>🎯 Qué hacer ahora</p>
+                  <div className="flex flex-col gap-2">
+                    {gabiAdvice.acciones.map((a,i) => (
+                      <div key={i} className="flex items-start gap-2">
+                        <span style={{ fontSize:16, lineHeight:'20px', flexShrink:0 }}>{a.icon}</span>
+                        <p className="text-sm text-gray-700 leading-tight">{a.text}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Suggested message */}
+                <div className="rounded-xl p-3" style={{ background:'#FFFFFF', border:'1px solid #EDEDED' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <p className="text-xs font-bold" style={{ color:'#1A1A1A', textTransform:'uppercase', letterSpacing:0.5 }}>💬 Mensaje sugerido</p>
+                    <button
+                      onClick={() => { setText(gabiAdvice.mensaje); setShowGabi(false); }}
+                      className="text-xs font-semibold px-3 py-1 rounded-full transition-colors"
+                      style={{ background:'#FF441F', color:'#FFFFFF' }}>
+                      Usar →
+                    </button>
+                  </div>
+                  <p className="text-sm text-gray-600 leading-relaxed italic">"{gabiAdvice.mensaje}"</p>
+                </div>
+
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Templates dropdown */}
+      {showTemplates && (
+        <div className="flex-shrink-0 fade-in" style={{ background:'#F4F4F4', borderTop:'1px solid #EDEDED' }}>
+          <div className="px-3 py-2 flex justify-between items-center">
+            <span className="text-xs font-semibold text-wa-text uppercase tracking-wide">Plantillas rápidas</span>
+            <button onClick={() => setShowTemplates(false)} className="p-1 hover:bg-black/5 rounded-full"><Icon path={IC.close} size={14} color="#777777"/></button>
+          </div>
+          <div className="max-h-48 overflow-y-auto">
+            {TEMPLATES.map(t => (
+              <button key={t.id} onClick={() => insertTemplate(t)}
+                      className="w-full text-left px-4 py-2.5 hover:bg-wa-hover transition-colors border-b border-white/5">
+                <p className="text-sm font-medium text-gray-900">{t.name}</p>
+                <p className="text-xs text-wa-text truncate mt-0.5">{t.text}</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="flex-shrink-0 px-3 py-2 flex items-end gap-2" style={{ background:'#FFFFFF' }}>
+        <button onClick={() => setShowTemplates(!showTemplates)}
+                className={`p-2.5 rounded-full transition-colors flex-shrink-0 ${showTemplates ? 'bg-wa-green/20 text-wa-green' : 'hover:bg-black/5 text-wa-icon'}`}
+                title="Plantillas">
+          <Icon path={IC.template} size={20} color={showTemplates ? '#FF441F' : '#CCCCCC'}/>
+        </button>
+        <button className="p-2.5 hover:bg-black/5 rounded-full transition-colors flex-shrink-0">
+          <Icon path={IC.emoji} size={20} color="#777777"/>
+        </button>
+        <textarea
+          value={text}
+          onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); send(); } }}
+          placeholder="Escribe un mensaje…"
+          rows={1}
+          className="flex-1 resize-none rounded-lg px-4 py-2.5 text-sm text-gray-900 placeholder-wa-text"
+          style={{ background:'#F4F4F4', border:'none', outline:'none', maxHeight:120, lineHeight:'1.5' }}
+          onInput={e => { e.target.style.height='auto'; e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'; }}
+        />
+        <button onClick={send} className="p-2.5 rounded-full transition-colors flex-shrink-0"
+                style={{ background: text.trim() ? '#FF441F' : '#F4F4F4' }}>
+          <Icon path={IC.send} size={20} color={text.trim() ? '#fff' : '#CCCCCC'}/>
+        </button>
+      </div>
+    </div>
+  );
+};
+
+/* ─── HOME VIEW ─── */
+const HomeView = ({ aliados, currentUser, onOpenChat }) => {
+  const now   = new Date();
+  const hour  = now.getHours();
+  const greeting = hour < 12 ? 'Buenos días' : hour < 18 ? 'Buenas tardes' : 'Buenas noches';
+  const dateStr  = now.toLocaleDateString('es-CO', { weekday:'long', day:'numeric', month:'long' });
+  const dateLabel = dateStr.charAt(0).toUpperCase() + dateStr.slice(1);
+
+  // ── KPI calculations ──
+  // Asignados: aliados del agente según zona
+  const asignados    = aliados.filter(a => currentUser.zone === 'Todas' || a.zone === currentUser.zone);
+  const asignadosN   = asignados.length;
+
+  // Sin Leer: conversaciones con mensajes no leídos
+  const sinLeer      = aliados.filter(a => a.unread > 0).length;
+
+  // Sin Responder: última msg es del aliado Y ya fue leída (unread===0) → agente no ha contestado
+  const lastMsgFrom  = a => {
+    const roleKey = currentUser.role === 'Farmer Mass' ? 'msgsFarmer' : 'msgs';
+    const m = (a[roleKey] || a.msgs);
+    return m.length > 0 ? m[m.length - 1].from : null;
+  };
+  const sinResponder = aliados.filter(a => a.unread === 0 && lastMsgFrom(a) === 'them').length;
+
+  // Pendientes: última msg es del agente → aliado no ha respondido
+  const pendientes   = aliados.filter(a => lastMsgFrom(a) === 'me').length;
+
+  const total     = aliados.length;
+  const positivos = aliados.filter(a => a.sentimiento === 'Positivo').length;
+  const neutrales = aliados.filter(a => a.sentimiento === 'Neutral').length;
+  const negativos = aliados.filter(a => a.sentimiento === 'Negativo').length;
+
+  const pct = (n) => total > 0 ? Math.round((n/total)*100) : 0;
+
+  // Sort: sin responder first → sin leer → pendientes → rest
+  const sortedAliados = [...aliados].sort((a,b) => {
+    const priority = x => {
+      if (x.unread > 0) return 0;
+      if (x.unread === 0 && lastMsgFrom(x) === 'them') return 1;
+      if (lastMsgFrom(x) === 'me') return 2;
+      return 3;
+    };
+    return priority(a) - priority(b);
+  });
+
+  const sentIcon  = s => s==='Positivo' ? '😊' : s==='Negativo' ? '😞' : '😐';
+  const sentColor = s => s==='Positivo' ? '#16A34A' : s==='Negativo' ? '#DC2626' : '#D97706';
+
+  return (
+    <div className="flex flex-col h-full overflow-y-auto" style={{ background:'#F4F4F4' }}>
+
+      {/* ── Header ── */}
+      <div className="flex-shrink-0 px-5 pt-5 pb-4" style={{ background:'#FFFFFF', borderBottom:'1px solid #EDEDED' }}>
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-wa-text mb-0.5">{dateLabel}</p>
+            <h2 style={{ fontFamily:'Poppins', fontWeight:700, fontSize:20, color:'#1A1A1A', lineHeight:1.2 }}>
+              {greeting}, <span style={{ color:'#FF441F' }}>{currentUser.name.split(' ')[0]}</span> 👋
+            </h2>
+            <p className="text-xs text-wa-text mt-1">
+              <span className="font-medium" style={{ color:'#1A1A1A' }}>{currentUser.role}</span> · {currentUser.email}
+            </p>
+          </div>
+          <div className="w-12 h-12 rounded-full overflow-hidden flex-shrink-0" style={{ border:'2px solid #FF441F' }}>
+            {currentUser.photo
+              ? <img src={currentUser.photo} style={{ width:'100%', height:'100%', objectFit:'cover' }}/>
+              : <div style={{ width:'100%', height:'100%', background:currentUser.color, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, color:'#fff' }}>{currentUser.avatar}</div>
+            }
+          </div>
+        </div>
+      </div>
+
+      <div className="px-4 py-4 flex flex-col gap-4">
+
+        {/* ── KPI Cards ── */}
+        <div className="grid grid-cols-2 gap-3">
+          {[
+            { label:'Asignados',      value:asignadosN,  color:'#1A1A1A', bg:'#FFFFFF',  icon:'🏪', desc:'Aliados asignados a ti' },
+            { label:'Sin Leer',       value:sinLeer,     color:'#FF441F', bg:'#FFF0ED',  icon:'🔴', desc:'Mensajes no leídos' },
+            { label:'Sin Responder',  value:sinResponder,color:'#7C3AED', bg:'#F5F3FF',  icon:'💬', desc:'Esperando tu respuesta' },
+            { label:'Pendientes',     value:pendientes,  color:'#D97706', bg:'#FFFBEB',  icon:'⏳', desc:'Esperando respuesta del aliado' },
+          ].map(c => (
+            <div key={c.label} className="rounded-2xl p-4" style={{ background:c.bg, border:'1px solid #EDEDED' }}>
+              <div className="flex items-center gap-2 mb-1">
+                <span style={{ fontSize:20 }}>{c.icon}</span>
+                <p style={{ fontFamily:'Poppins', fontWeight:800, fontSize:28, color:c.color, lineHeight:1 }}>{c.value}</p>
+              </div>
+              <p className="text-sm font-semibold" style={{ color:'#1A1A1A' }}>{c.label}</p>
+              <p className="text-xs mt-0.5" style={{ color:'#AAAAAA' }}>{c.desc}</p>
+            </div>
+          ))}
+        </div>
+
+        {/* ── Sentiment Bar ── */}
+        <div className="rounded-2xl p-4" style={{ background:'#FFFFFF', border:'1px solid #EDEDED' }}>
+          <p className="text-xs font-bold mb-3" style={{ color:'#1A1A1A', textTransform:'uppercase', letterSpacing:0.5 }}>Sentimiento general</p>
+          <div className="flex rounded-full overflow-hidden mb-3" style={{ height:10 }}>
+            {positivos > 0 && <div style={{ width:`${pct(positivos)}%`, background:'#16A34A' }}/>}
+            {neutrales > 0 && <div style={{ width:`${pct(neutrales)}%`, background:'#D97706' }}/>}
+            {negativos > 0 && <div style={{ width:`${pct(negativos)}%`, background:'#DC2626' }}/>}
+          </div>
+          <div className="flex justify-between">
+            {[['😊','Positivo',positivos,'#16A34A'],['😐','Neutral',neutrales,'#D97706'],['😞','Negativo',negativos,'#DC2626']].map(([icon,label,n,color])=>(
+              <div key={label} className="flex items-center gap-1.5">
+                <span style={{ fontSize:14 }}>{icon}</span>
+                <div>
+                  <p style={{ fontFamily:'Poppins', fontWeight:700, fontSize:15, color, lineHeight:1 }}>{n}</p>
+                  <p style={{ fontSize:10, color:'#AAAAAA' }}>{label}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Conversation Feed ── */}
+        <div className="rounded-2xl overflow-hidden" style={{ border:'1px solid #EDEDED' }}>
+          <div className="px-4 py-3 flex items-center justify-between" style={{ background:'#FFFFFF', borderBottom:'1px solid #EDEDED' }}>
+            <p className="text-xs font-bold" style={{ color:'#1A1A1A', textTransform:'uppercase', letterSpacing:0.5 }}>Conversaciones</p>
+            <span className="text-xs text-wa-text">{total} aliados</span>
+          </div>
+          {sortedAliados.map((a, idx) => (
+            <div key={a.id}
+                 onClick={() => onOpenChat(a)}
+                 className="flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-wa-hover"
+                 style={{ background:'#FFFFFF', borderBottom: idx < sortedAliados.length-1 ? '1px solid #F4F4F4' : 'none' }}>
+              {/* Avatar */}
+              <div className="relative flex-shrink-0">
+                <div style={{ width:42, height:42, borderRadius:'50%', background:a.color, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700, color:'#fff', fontSize:14 }}>{a.avatar}</div>
+                <span style={{ position:'absolute', bottom:0, right:0, fontSize:12, lineHeight:1 }}>{sentIcon(a.sentimiento)}</span>
+              </div>
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="font-semibold text-sm text-gray-900 truncate">{a.name}</span>
+                </div>
+                <p className="text-xs text-wa-text truncate">{a.lastMsg}</p>
+                <p className="text-xs mt-0.5" style={{ color:'#CCCCCC' }}>{a.category} · {a.zone} · {a.lastTime}</p>
+              </div>
+              {/* Right */}
+              <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                {a.unread > 0
+                  ? <span className="px-2 py-0.5 rounded-full text-xs font-bold text-white" style={{ background:'#FF441F' }}>Sin leer {a.unread}</span>
+                  : lastMsgFrom(a) === 'them'
+                    ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background:'#F5F3FF', color:'#7C3AED' }}>Sin responder</span>
+                    : lastMsgFrom(a) === 'me'
+                      ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ background:'#FFFBEB', color:'#D97706' }}>Pendiente</span>
+                      : <span style={{ fontSize:16 }}>{sentIcon(a.sentimiento)}</span>
+                }
+                <span style={{ fontSize:13 }}>{sentIcon(a.sentimiento)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </div>
+  );
+};
+
+/* ─── CONTACTS VIEW ─── */
+const ContactsView = ({ aliados, onOpenChat }) => {
+  const [search, setSearch] = useState('');
+  const [catFilter, setCatFilter] = useState('Todos');
+  const [zoneFilter, setZoneFilter] = useState('Todas');
+  const [statusFilter, setStatusFilter] = useState('Todos');
+  const [showFilters, setShowFilters] = useState(false);
+  const [selected, setSelected] = useState(null);
+
+  const filtered = aliados.filter(a => {
+    const q = search.toLowerCase();
+    return (
+      (a.name.toLowerCase().includes(q) || a.phone.includes(q)) &&
+      (catFilter === 'Todos' || a.category === catFilter) &&
+      (zoneFilter === 'Todas' || a.zone === zoneFilter) &&
+      (statusFilter === 'Todos' || a.status === statusFilter)
+    );
+  });
+
+  const stats = {
+    total: aliados.length,
+    activos: aliados.filter(a => a.status === 'Activo').length,
+    pendientes: aliados.filter(a => a.status === 'Pendiente').length,
+    inactivos: aliados.filter(a => a.status === 'Inactivo').length,
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden" style={{ background:'#F4F4F4' }}>
+      {/* Header */}
+      <div className="flex-shrink-0 px-4 py-4" style={{ background:'#FFFFFF', borderBottom:'1px solid #EDEDED' }}>
+        <div className="flex justify-between items-center mb-3">
+          <h2 className="font-bold text-gray-900 text-lg">Aliados</h2>
+          <button className="p-2 hover:bg-black/5 rounded-full transition-colors">
+            <Icon path={IC.plus} size={20} color="#777777"/>
+          </button>
+        </div>
+        {/* Stats */}
+        <div className="grid grid-cols-4 gap-2 mb-3">
+          {[
+            { label:'Total', value: stats.total, color:'text-gray-900' },
+            { label:'Activos', value: stats.activos, color:'text-green-400' },
+            { label:'Pendientes', value: stats.pendientes, color:'text-amber-400' },
+            { label:'Inactivos', value: stats.inactivos, color:'text-gray-400' },
+          ].map(s => (
+            <div key={s.label} className="rounded-lg p-2 text-center" style={{ background:'#F4F4F4' }}>
+              <p className={`font-bold text-lg ${s.color}`}>{s.value}</p>
+              <p className="text-wa-text text-xs">{s.label}</p>
+            </div>
+          ))}
+        </div>
+        {/* Search */}
+        <div className="flex gap-2">
+          <div className="flex-1 flex items-center gap-2 rounded-lg px-3 py-2" style={{ background:'#F4F4F4' }}>
+            <Icon path={IC.search} size={16} color="#AAAAAA"/>
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                   placeholder="Buscar aliado…"
+                   className="flex-1 bg-transparent text-sm text-gray-900 placeholder-wa-text"
+                   style={{ border:'none', outline:'none' }}/>
+          </div>
+          <button onClick={() => setShowFilters(!showFilters)}
+                  className={`px-3 rounded-lg transition-colors flex items-center gap-1.5 text-sm ${showFilters ? 'text-wa-green' : 'text-wa-text'}`}
+                  style={{ background:'#F4F4F4' }}>
+            <Icon path={IC.filter} size={15} color={showFilters ? '#FF441F' : '#AAAAAA'}/>
+            Filtros
+          </button>
+        </div>
+        {/* Filters */}
+        {showFilters && (
+          <div className="mt-3 space-y-2 fade-in">
+            {[
+              { label:'Categoría', options: CATEGORIES, value: catFilter, set: setCatFilter },
+              { label:'Zona',      options: ZONES,      value: zoneFilter, set: setZoneFilter },
+              { label:'Estado',    options: STATUSES_FILTER, value: statusFilter, set: setStatusFilter },
+            ].map(f => (
+              <div key={f.label}>
+                <p className="text-wa-text text-xs mb-1">{f.label}</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {f.options.map(o => (
+                    <button key={o} onClick={() => f.set(o)}
+                            className={`px-2.5 py-1 rounded-full text-xs font-medium transition-colors ${f.value===o ? 'text-gray-900' : 'text-wa-text hover:text-gray-900'}`}
+                            style={{ background: f.value===o ? '#FF441F' : '#F4F4F4' }}>
+                      {o}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* List */}
+      <div className="flex-1 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-wa-text">
+            <Icon path={IC.user} size={40} color="#C1C9D0"/>
+            <p className="mt-2 text-sm">Sin resultados</p>
+          </div>
+        ) : filtered.map(a => (
+          <div key={a.id}
+               onClick={() => { setSelected(selected===a.id ? null : a.id); }}
+               className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${selected===a.id ? 'bg-wa-hover' : 'hover:bg-wa-hover'}`}
+               style={{ borderBottom:'1px solid #EDEDED' }}>
+            <Avatar label={a.avatar} color={a.color} size={44} online={a.status==='Activo'}/>
+            <div className="flex-1 min-w-0">
+              <div className="flex justify-between items-center">
+                <p className="font-medium text-gray-900 text-sm truncate">{a.name}</p>
+                <span className={`ml-2 px-2 py-0.5 rounded-full text-xs font-medium flex-shrink-0 ${STATUS_BG[a.status]}`}>{a.status}</span>
+              </div>
+              <p className="text-xs text-wa-text mt-0.5">{a.phone}</p>
+              <div className="flex gap-2 mt-1">
+                <span className="flex items-center gap-1 text-xs" style={{ color:'#888888' }}>
+                  <Icon path={IC.tag} size={11} color="#AAAAAA"/>{a.category}
+                </span>
+                <span className="text-xs text-wa-text">· {a.zone}</span>
+              </div>
+            </div>
+            <button onClick={e => { e.stopPropagation(); onOpenChat(a); }}
+                    className="p-2 hover:bg-black/5 rounded-full transition-colors flex-shrink-0"
+                    title="Abrir chat">
+              <Icon path={IC.chat} size={18} color="#777777"/>
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ─── BROADCAST VIEW ─── */
+const BroadcastView = ({ aliados }) => {
+  const [selected, setSelected] = useState([]);
+  const [message, setMessage] = useState('');
+  const [sent, setSent] = useState(false);
+  const [search, setSearch] = useState('');
+  const [catFilter, setCatFilter] = useState('Todos');
+
+  const filtered = aliados.filter(a => {
+    const q = search.toLowerCase();
+    return a.name.toLowerCase().includes(q) && (catFilter==='Todos' || a.category===catFilter);
+  });
+
+  const toggle = (id) => setSelected(s => s.includes(id) ? s.filter(x=>x!==id) : [...s, id]);
+  const selectAll = () => setSelected(filtered.map(a => a.id));
+  const clearAll = () => setSelected([]);
+
+  const sendBroadcast = () => {
+    if (!message.trim() || selected.length === 0) return;
+    setSent(true);
+    setTimeout(() => { setSent(false); setMessage(''); setSelected([]); }, 3000);
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden" style={{ background:'#F4F4F4' }}>
+      <div className="flex-shrink-0 px-4 py-4" style={{ background:'#FFFFFF', borderBottom:'1px solid #EDEDED' }}>
+        <h2 className="font-bold text-gray-900 text-lg mb-1">Difusión Masiva</h2>
+        <p className="text-wa-text text-xs">Envía un mensaje a múltiples aliados a la vez</p>
+        <div className="flex gap-2 mt-3">
+          <div className="flex-1 flex items-center gap-2 rounded-lg px-3 py-2" style={{ background:'#F4F4F4' }}>
+            <Icon path={IC.search} size={16} color="#AAAAAA"/>
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)}
+                   placeholder="Buscar aliado…" className="flex-1 bg-transparent text-sm text-gray-900 placeholder-wa-text" style={{ border:'none', outline:'none' }}/>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {CATEGORIES.map(c => (
+            <button key={c} onClick={() => setCatFilter(c)}
+                    className="px-2.5 py-1 rounded-full text-xs font-medium transition-colors"
+                    style={{ background: catFilter===c ? '#FF441F' : '#F4F4F4', color: catFilter===c ? '#fff' : '#AAAAAA' }}>{c}</button>
+          ))}
+        </div>
+        <div className="flex justify-between items-center mt-3">
+          <span className="text-wa-text text-xs">{selected.length} seleccionados de {filtered.length}</span>
+          <div className="flex gap-2">
+            <button onClick={selectAll} className="text-xs text-wa-green hover:underline">Todos</button>
+            <button onClick={clearAll} className="text-xs text-wa-text hover:text-gray-900">Limpiar</button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {filtered.map(a => (
+          <div key={a.id} onClick={() => toggle(a.id)}
+               className="flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-wa-hover transition-colors"
+               style={{ borderBottom:'1px solid #EDEDED' }}>
+            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${selected.includes(a.id) ? 'bg-wa-green border-wa-green' : 'border-wa-icon'}`}>
+              {selected.includes(a.id) && <Icon path={IC.check2} size={11} color="#fff"/>}
+            </div>
+            <Avatar label={a.avatar} color={a.color} size={38} online={a.status==='Activo'}/>
+            <div className="flex-1 min-w-0">
+              <p className="text-gray-900 text-sm font-medium truncate">{a.name}</p>
+              <p className="text-wa-text text-xs">{a.category} · {a.zone}</p>
+            </div>
+            <span className={`px-2 py-0.5 rounded-full text-xs ${STATUS_BG[a.status]}`}>{a.status}</span>
+          </div>
+        ))}
+      </div>
+
+      {/* Message composer */}
+      <div className="flex-shrink-0 px-4 py-4" style={{ background:'#FFFFFF', borderTop:'1px solid #EDEDED' }}>
+        {sent ? (
+          <div className="text-center py-2 fade-in">
+            <p className="text-wa-green font-semibold text-sm">✓ Mensaje enviado a {selected.length} aliados</p>
+          </div>
+        ) : (
+          <>
+            <div className="mb-2">
+              <p className="text-wa-text text-xs mb-1">Plantillas rápidas</p>
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {TEMPLATES.map(t => (
+                  <button key={t.id} onClick={() => setMessage(t.text)}
+                          className="flex-shrink-0 px-3 py-1.5 rounded-full text-xs text-wa-text hover:text-gray-900 transition-colors"
+                          style={{ background:'#F4F4F4', whiteSpace:'nowrap' }}>{t.name}</button>
+                ))}
+              </div>
+            </div>
+            <textarea value={message} onChange={e => setMessage(e.target.value)}
+                      placeholder="Escribe tu mensaje de difusión…" rows={3}
+                      className="w-full rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-wa-text resize-none"
+                      style={{ background:'#F4F4F4', border:'none', outline:'none' }}/>
+            <button onClick={sendBroadcast}
+                    disabled={!message.trim() || selected.length === 0}
+                    className="mt-2 w-full py-2.5 rounded-lg font-semibold text-sm transition-all"
+                    style={{ background: (!message.trim() || selected.length===0) ? '#F4F4F4' : '#FF441F', color: (!message.trim() || selected.length===0) ? '#4A5568' : '#fff' }}>
+              {selected.length === 0 ? 'Selecciona aliados primero' : `Enviar a ${selected.length} aliado${selected.length>1?'s':''}`}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+/* ─── TEMPLATES VIEW ─── */
+const TemplatesView = () => {
+  const [templates, setTemplates] = useState(TEMPLATES);
+  const [editing, setEditing] = useState(null);
+  const [form, setForm] = useState({ name:'', text:'' });
+
+  const save = () => {
+    if (!form.name.trim() || !form.text.trim()) return;
+    if (editing === 'new') {
+      setTemplates(t => [...t, { id: Date.now(), ...form }]);
+    } else {
+      setTemplates(t => t.map(x => x.id===editing ? { ...x, ...form } : x));
+    }
+    setEditing(null);
+    setForm({ name:'', text:'' });
+  };
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden" style={{ background:'#F4F4F4' }}>
+      <div className="flex-shrink-0 px-4 py-4 flex justify-between items-center" style={{ background:'#FFFFFF', borderBottom:'1px solid #EDEDED' }}>
+        <div>
+          <h2 className="font-bold text-gray-900 text-lg">Plantillas</h2>
+          <p className="text-wa-text text-xs">{templates.length} plantillas guardadas</p>
+        </div>
+        <button onClick={() => { setEditing('new'); setForm({ name:'', text:'' }); }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors"
+                style={{ background:'#FF441F', color:'#fff' }}>
+          <Icon path={IC.plus} size={16} color="#fff"/>Nueva
+        </button>
+      </div>
+
+      {editing && (
+        <div className="flex-shrink-0 px-4 py-4 fade-in" style={{ background:'#F4F4F4', borderBottom:'1px solid #EDEDED' }}>
+          <p className="text-gray-900 font-medium text-sm mb-3">{editing==='new' ? 'Nueva plantilla' : 'Editar plantilla'}</p>
+          <input type="text" value={form.name} onChange={e => setForm(f => ({...f, name:e.target.value}))}
+                 placeholder="Nombre de la plantilla" className="w-full rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-wa-text mb-2"
+                 style={{ background:'#F4F4F4', border:'none', outline:'none' }}/>
+          <textarea value={form.text} onChange={e => setForm(f => ({...f, text:e.target.value}))}
+                    placeholder="Texto del mensaje. Usa {{variable}} para campos dinámicos." rows={4}
+                    className="w-full rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-wa-text resize-none"
+                    style={{ background:'#F4F4F4', border:'none', outline:'none' }}/>
+          <p className="text-wa-text text-xs mt-1 mb-3">Variables: {'{{nombre}}'} {'{{agente}}'} {'{{fecha}}'} {'{{hora}}'} {'{{mes}}'}</p>
+          <div className="flex gap-2">
+            <button onClick={save} className="flex-1 py-2 rounded-lg text-sm font-semibold" style={{ background:'#FF441F', color:'#fff' }}>Guardar</button>
+            <button onClick={() => { setEditing(null); setForm({name:'',text:''}); }}
+                    className="flex-1 py-2 rounded-lg text-sm font-semibold text-wa-text hover:text-gray-900 transition-colors" style={{ background:'#F4F4F4' }}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex-1 overflow-y-auto">
+        {templates.map(t => (
+          <div key={t.id} className="px-4 py-3 hover:bg-wa-hover transition-colors" style={{ borderBottom:'1px solid #EDEDED' }}>
+            <div className="flex justify-between items-start gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-gray-900 font-medium text-sm">{t.name}</p>
+                <p className="text-wa-text text-xs mt-1 leading-relaxed">{t.text}</p>
+              </div>
+              <div className="flex gap-1 flex-shrink-0">
+                <button onClick={() => { setEditing(t.id); setForm({ name:t.name, text:t.text }); }}
+                        className="p-1.5 hover:bg-black/5 rounded-full transition-colors text-wa-text hover:text-gray-900 text-xs px-2">
+                  Editar
+                </button>
+                <button onClick={() => setTemplates(ts => ts.filter(x => x.id !== t.id))}
+                        className="p-1.5 hover:bg-red-500/20 rounded-full transition-colors text-wa-text hover:text-red-400 text-xs px-2">
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* ─── MOCK USERS ─── */
+const USERS = [
+  { id:1, email:'david.vanegas@rappi.com',  password:'123456', name:'David Vanegas',  role:'Inside Sales',       avatar:'DV', color:'#7C3AED', zone:'Todas', photo:'david.jpg' },
+  { id:2, email:'matias.kramer@rappi.com',  password:'123456', name:'Matías Kramer',  role:'Farmer Mass',        avatar:'MK', color:'#0891B2', zone:'Norte', photo:'matias.jpg' },
+  { id:3, email:'felipe.campos@rappi.com',  password:'123456', name:'Felipe Campos',  role:'Brand Development',  avatar:'FC', color:'#E11D48', zone:'Sur',  photo:'felipe.jpg' },
+];
+
+/* ─── LOGIN SCREEN ─── */
+function LoginScreen({ onLogin }) {
+  const [email, setEmail]       = useState('');
+  const [password, setPassword] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [error, setError]       = useState('');
+  const [loading, setLoading]   = useState(false);
+
+  const submit = (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    setTimeout(() => {
+      const user = USERS.find(u => u.email === email.trim().toLowerCase() && u.password === password);
+      if (user) {
+        onLogin(user);
+      } else {
+        setError('Correo o contraseña incorrectos.');
+        setLoading(false);
+      }
+    }, 800);
+  };
+
+  const quickLogin = (user) => {
+    setEmail(user.email);
+    setPassword(user.password);
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ background:'#F9F5F3' }}>
+      <div className="w-full max-w-sm fade-in">
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-20 h-20 rounded-3xl flex items-center justify-center mb-4 shadow-xl" style={{ background:'#FFFFFF' }}>
+            <img src="moustache-orange.png" alt="Rappi" style={{ width:56, height:'auto' }}/>
+          </div>
+          <div className="flex items-center mb-1">
+            <span style={{ fontFamily:'Poppins', fontWeight:800, fontSize:26, color:'#FF441F', letterSpacing:-0.5 }}>Rappi</span><span style={{ fontFamily:'Poppins', fontWeight:300, fontSize:26, color:'#1A1A1A', letterSpacing:-0.5 }}>Orbit</span>
+          </div>
+          <p className="text-wa-text text-sm mt-0.5">Plataforma de comunicación</p>
+        </div>
+
+        {/* Card */}
+        <div className="rounded-2xl p-6 shadow-2xl" style={{ background:'#FFFFFF', border:'1px solid #EDEDED' }}>
+          <form onSubmit={submit} className="space-y-4">
+            <div>
+              <label className="block text-xs font-medium text-wa-text mb-1.5">Correo electrónico</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="tu@empresa.com"
+                required
+                autoComplete="email"
+                className="w-full rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-wa-text transition-colors"
+                style={{ background:'#F4F4F4', border:'1px solid #D1D7DB', outline:'none' }}
+                onFocus={e => e.target.style.borderColor='#FF441F'}
+                onBlur={e => e.target.style.borderColor='#D1D7DB'}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-wa-text mb-1.5">Contraseña</label>
+              <div className="relative">
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  required
+                  autoComplete="current-password"
+                  className="w-full rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-wa-text transition-colors pr-11"
+                  style={{ background:'#F4F4F4', border:'1px solid #D1D7DB', outline:'none' }}
+                  onFocus={e => e.target.style.borderColor='#FF441F'}
+                  onBlur={e => e.target.style.borderColor='#D1D7DB'}
+                />
+                <button type="button" onClick={() => setShowPass(s => !s)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-wa-text hover:text-gray-900 transition-colors">
+                  {showPass
+                    ? <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
+                    : <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  }
+                </button>
+              </div>
+            </div>
+
+            {error && (
+              <p className="text-red-400 text-xs text-center py-1 px-3 rounded-lg fade-in" style={{ background:'#FEF2F2' }}>{error}</p>
+            )}
+
+            <button type="submit" disabled={loading}
+                    className="w-full py-3 rounded-xl font-semibold text-sm transition-all mt-2"
+                    style={{ background: loading ? '#DDDDDD' : '#FF441F', color: loading ? '#AAAAAA' : '#fff' }}>
+              {loading ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/>
+                  </svg>
+                  Iniciando sesión…
+                </span>
+              ) : 'Iniciar sesión'}
+            </button>
+          </form>
+        </div>
+
+        {/* Demo accounts */}
+        <div className="mt-5">
+          <p className="text-center text-xs text-wa-text mb-3">— Cuentas de demostración —</p>
+          <div className="space-y-2">
+            {USERS.map(u => (
+              <button key={u.id} onClick={() => quickLogin(u)}
+                      className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left hover:bg-black/5"
+                      style={{ background:'#F9FAFB', border:'1px solid #EDEDED' }}>
+                <Avatar label={u.avatar} color={u.color} size={32} photo={u.photo||null}/>
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium" style={{ color: u.color }}>{u.name}</p>
+                  <p className="text-wa-text text-xs">{u.email}</p>
+                </div>
+                <span className="text-xs px-2 py-0.5 rounded-full flex-shrink-0"
+                      style={{
+                        background: u.role==='Inside Sales' ? '#7C3AED22' : u.role==='Farmer Mass' ? '#0891B222' : '#E11D4822',
+                        color:      u.role==='Inside Sales' ? '#7C3AED'   : u.role==='Farmer Mass' ? '#0891B2'   : '#E11D48'
+                      }}>
+                  {u.role}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="text-center text-xs mt-3" style={{ color:'#555555' }}>Contraseña de demo: <span style={{ color:'#888888' }}>123456</span></p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── MAIN APP ─── */
+function App() {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [aliados, setAliados] = useState(initialAliados);
+  const [activeSection, setActiveSection] = useState('home');  // home | chats | contacts | templates
+  const [activeChat, setActiveChat] = useState(null);
+  const [searchChat, setSearchChat] = useState('');
+  const [showMobileChat, setShowMobileChat] = useState(false);
+  const [chatTab, setChatTab] = useState('asignados');   // asignados | activos
+  const [chatZone, setChatZone] = useState('Todos');
+
+  if (!currentUser) return <LoginScreen onLogin={setCurrentUser}/>;
+
+  const perms = ROLE_CONFIG[currentUser.role] || ROLE_CONFIG['Inside Sales'];
+
+  const openChat = (aliado) => {
+    setActiveChat(aliado);
+    setActiveSection('chats');
+    setShowMobileChat(true);
+    // Clear unread
+    setAliados(prev => prev.map(a => a.id === aliado.id ? { ...a, unread:0 } : a));
+  };
+
+  const sendMessage = (aliadoId, text) => {
+    const now = new Date();
+    const time = now.toLocaleTimeString('es', { hour:'2-digit', minute:'2-digit' });
+    const newMsg = { id: Date.now(), from:'me', text, time };
+    setAliados(prev => prev.map(a =>
+      a.id === aliadoId
+        ? { ...a, msgs:[...a.msgs, newMsg], lastMsg: text, lastTime: time }
+        : a
+    ));
+    setActiveChat(prev => prev?.id === aliadoId ? { ...prev, msgs:[...prev.msgs, newMsg], lastMsg:text, lastTime:time } : prev);
+  };
+
+  const sortedChats = [...aliados].sort((a,b) => {
+    if (a.pinned && !b.pinned) return -1;
+    if (!a.pinned && b.pinned) return 1;
+    return 0;
+  });
+
+  const filteredChats = sortedChats.filter(a =>
+    a.name.toLowerCase().includes(searchChat.toLowerCase()) ||
+    a.lastMsg.toLowerCase().includes(searchChat.toLowerCase())
+  );
+
+  const totalUnread = aliados.reduce((s,a) => s + a.unread, 0);
+
+  const navItems = [
+    { id:'home',      icon: IC.home,      label:'Inicio',    badge: 0 },
+    { id:'chats',     icon: IC.chat,      label:'Chats',     badge: totalUnread },
+    { id:'contacts',  icon: IC.contacts,  label:'Aliados',   badge: 0 },
+    { id:'templates', icon: IC.template,  label:'Plantillas',badge: 0 },
+  ].filter(n => n.id === 'home' || perms.navSections.includes(n.id));
+
+  return (
+    <div className="flex h-screen overflow-hidden" style={{ background:'#F4F4F4' }}>
+
+      {/* ── Sidebar nav (icon strip) ── */}
+      <div className="flex flex-col items-center py-4 gap-1 flex-shrink-0" style={{ width:60, background:'#FFFFFF', borderRight:'1px solid #EDEDED' }}>
+        {/* Logo Rappi Orbit */}
+        <div className="w-9 h-9 rounded-xl flex items-center justify-center mb-3" style={{ background:'#FFFFFF', border:'1px solid #EDEDED' }}>
+          <img src="moustache-orange.png" alt="Rappi" style={{ width:26, height:'auto' }}/>
+        </div>
+        {navItems.map(n => (
+          <button key={n.id} onClick={() => { setActiveSection(n.id); if(n.id!=='chats') setShowMobileChat(false); }}
+                  className="relative w-10 h-10 rounded-xl flex items-center justify-center transition-colors group"
+                  style={{ background: activeSection===n.id ? '#FFF0ED' : 'transparent' }}
+                  title={n.label}>
+            <Icon path={n.icon} size={20} color={activeSection===n.id ? '#FF441F' : '#AAAAAA'}/>
+            {n.badge > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 rounded-full text-white text-xs flex items-center justify-center font-bold rappi-gradient" style={{ fontSize:9 }}>{n.badge}</span>
+            )}
+          </button>
+        ))}
+        <div className="flex-1"/>
+        <button className="w-10 h-10 rounded-xl flex items-center justify-center hover:bg-wa-hover transition-colors" title="Configuración">
+          <Icon path={IC.settings} size={20} color="#AAAAAA"/>
+        </button>
+        <div title={currentUser.name}>
+          <Avatar label={currentUser.avatar} color={currentUser.color} size={32} photo={currentUser.photo||null}/>
+        </div>
+      </div>
+
+      {/* ── Left panel (hidden on home) ── */}
+      <div className={`flex-shrink-0 flex flex-col ${activeSection==='home' ? 'hidden' : (showMobileChat ? 'hidden md:flex' : 'flex')}`}
+           style={{ width: 'clamp(280px, 30%, 380px)', borderRight:'1px solid #EDEDED' }}>
+
+        {activeSection === 'chats' && (() => {
+          // Tab filtering logic
+          const byTab = aliados.filter(a => {
+            if (chatTab === 'asignados') return a.zone === currentUser.zone || currentUser.zone === 'Todas';
+            if (chatTab === 'activos')   return a.status === 'Activo';
+            return true;
+          });
+          const byZone = chatZone === 'Todos' ? byTab : byTab.filter(a => a.zone === chatZone);
+          const visibleChats = byZone.filter(a =>
+            a.name.toLowerCase().includes(searchChat.toLowerCase()) ||
+            a.lastMsg.toLowerCase().includes(searchChat.toLowerCase())
+          );
+          const counts = {
+            asignados: aliados.filter(a => a.zone === currentUser.zone || currentUser.zone === 'Todas').length,
+            activos:   aliados.filter(a => a.status === 'Activo').length,
+          };
+          return (
+            <>
+              {/* Header */}
+              <div className="flex-shrink-0" style={{ background:'#FFFFFF', borderBottom:'1px solid #EDEDED' }}>
+                {/* Top row */}
+                <div className="flex items-center gap-3 px-4 pt-4 pb-3">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background:'#FFFFFF', border:'1px solid #EDEDED' }}>
+                    <img src="moustache-orange.png" alt="Rappi" style={{ width:26, height:'auto' }}/>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-sm leading-tight" style={{ fontFamily:'Poppins' }}>
+                      <span style={{ color:'#FF441F' }}>Rappi</span><span style={{ color:'#1A1A1A', fontWeight:300 }}>Orbit</span>
+                    </p>
+                    <p className="text-wa-text text-xs truncate">{currentUser.email.split('@')[0]}</p>
+                  </div>
+                  <button onClick={() => setCurrentUser(null)} className="p-1.5 hover:bg-black/5 rounded-full transition-colors flex-shrink-0" title="Cerrar sesión">
+                    <Icon path={IC.close} size={16} color="#AAAAAA"/>
+                  </button>
+                </div>
+
+                {/* Search */}
+                <div className="px-4 pb-3">
+                  <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background:'#F4F4F4' }}>
+                    <Icon path={IC.search} size={15} color="#AAAAAA"/>
+                    <input type="text" value={searchChat} onChange={e => setSearchChat(e.target.value)}
+                           placeholder="Buscar aliado…"
+                           className="flex-1 bg-transparent text-sm text-gray-900 placeholder-wa-text"
+                           style={{ border:'none', outline:'none' }}/>
+                  </div>
+                </div>
+
+                {/* + Nuevo Mensaje button */}
+                {perms.canNewMessage && (
+                <div className="px-4 pb-3">
+                  <button className="w-full py-2.5 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-opacity hover:opacity-90"
+                          style={{ background:'#FF441F', color:'#fff' }}>
+                    <Icon path={IC.plus} size={16} color="#fff"/>
+                    Nuevo Mensaje
+                  </button>
+                </div>
+                )}
+
+                {/* Tabs */}
+                <div className="flex" style={{ borderTop:'1px solid #EDEDED' }}>
+                  {[
+                    { id:'asignados', label:'Asignados' },
+                    { id:'activos',   label:'Activos'   },
+                  ].filter(t => perms.tabs.includes(t.id)).map(t => (
+                    <button key={t.id} onClick={() => setChatTab(t.id)}
+                            className={`flex-1 py-3 text-xs font-semibold transition-colors relative ${chatTab===t.id ? 'text-wa-green' : 'text-wa-text hover:text-gray-900'}`}>
+                      {t.label}
+                      <span className={`ml-1 text-xs ${chatTab===t.id ? 'text-wa-green' : 'text-wa-text'}`}>({counts[t.id]})</span>
+                      {chatTab===t.id && <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-wa-green"/>}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Zone filter */}
+                {perms.canZoneFilter && (
+                <div className="px-4 py-2.5" style={{ borderTop:'1px solid #EDEDED' }}>
+                  <p className="text-wa-text text-xs font-semibold uppercase tracking-wider mb-1.5">Zona</p>
+                  <select value={chatZone} onChange={e => setChatZone(e.target.value)}
+                          className="w-full rounded-lg px-3 py-2 text-sm text-gray-900 appearance-none cursor-pointer"
+                          style={{ background:'#F4F4F4', border:'1px solid #D1D7DB', outline:'none' }}>
+                    {(perms.canViewAllZones ? ZONES : ['Todos', currentUser.zone]).map(z => <option key={z} value={z}>{z}</option>)}
+                  </select>
+                </div>
+                )}
+              </div>
+
+              {/* Chat list */}
+              <div className="flex-1 overflow-y-auto">
+                {visibleChats.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center h-40 text-wa-text">
+                    <Icon path={IC.chat} size={32} color="#C1C9D0"/>
+                    <p className="mt-2 text-sm">Sin resultados</p>
+                  </div>
+                ) : visibleChats.map(a => (
+                  <div key={a.id} onClick={() => openChat(a)}
+                       className={`px-4 py-3 cursor-pointer transition-colors ${activeChat?.id===a.id ? 'bg-wa-hover' : 'hover:bg-wa-hover'}`}
+                       style={{ borderBottom:'1px solid #EDEDED' }}>
+                    <div className="flex items-start gap-3">
+                      <Avatar label={a.avatar} color={a.color} size={42} online={a.status==='Activo'}/>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-baseline mb-0.5">
+                          <p className="font-semibold text-gray-900 text-sm truncate">{a.name}</p>
+                          <span className={`text-xs ml-2 flex-shrink-0 ${a.unread>0 ? 'text-wa-green' : 'text-wa-text'}`}>{a.lastTime}</span>
+                        </div>
+                        <p className="text-wa-text text-xs truncate mb-1.5">{a.lastMsg}</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs px-2 py-0.5 rounded-full border font-medium"
+                                style={{ borderColor:'#D97706', color:'#D97706', background:'#D9770610' }}>
+                            enviado
+                          </span>
+                          {a.unread > 0 && (
+                            <span className="w-4 h-4 rounded-full bg-wa-green text-gray-900 text-xs flex items-center justify-center font-bold" style={{ fontSize:9 }}>{a.unread}</span>
+                          )}
+                          {a.pinned && <Icon path={IC.pin} size={11} color="#AAAAAA"/>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          );
+        })()}
+
+        {activeSection === 'contacts'  && <ContactsView aliados={aliados} onOpenChat={openChat}/>}
+        {activeSection === 'templates' && <TemplatesView/>}
+      </div>
+
+      {/* ── Right panel (chat / home) ── */}
+      <div className={`flex-1 flex flex-col ${activeSection!=='home' && !showMobileChat ? 'hidden md:flex' : 'flex'}`}>
+        {activeSection === 'home' ? (
+          <HomeView aliados={aliados} currentUser={currentUser} onOpenChat={(a) => { openChat(a); setActiveSection('chats'); }}/>
+        ) : activeChat ? (
+          <ChatPanel
+            aliado={aliados.find(a => a.id === activeChat.id) || activeChat}
+            onBack={() => setShowMobileChat(false)}
+            onSend={sendMessage}
+            perms={perms}
+            role={currentUser.role}
+          />
+        ) : (
+          <div className="flex-1 flex flex-col items-center justify-center chat-bg">
+            <div className="w-24 h-24 rounded-3xl flex items-center justify-center mb-6 shadow-lg" style={{ background:'#FFFFFF' }}>
+              <img src="moustache-orange.png" alt="Rappi" style={{ width:70, height:'auto' }}/>
+            </div>
+            <h3 className="text-2xl font-bold mb-1" style={{ fontFamily:'Poppins' }}>
+              <span style={{ color:'#FF441F' }}>Rappi</span><span style={{ color:'#1A1A1A', fontWeight:300 }}>Orbit</span>
+            </h3>
+            <p className="text-wa-text text-sm text-center max-w-xs mb-6">Selecciona un aliado para comenzar a chatear.</p>
+            <div className="flex gap-4 text-center">
+              {[
+                { value: aliados.length, label:'Aliados totales', color:'#FF441F' },
+                { value: aliados.filter(a=>a.status==='Activo').length, label:'Activos', color:'#34C85A' },
+                { value: aliados.reduce((s,a)=>s+a.unread,0), label:'Sin leer', color:'#FBDC25' },
+              ].map(s => (
+                <div key={s.label} className="rounded-2xl px-5 py-4 shadow-sm" style={{ background:'#FFFFFF' }}>
+                  <p className="text-3xl font-bold" style={{ color:s.color, fontFamily:'Poppins' }}>{s.value}</p>
+                  <p className="text-wa-text text-xs mt-1">{s.label}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
